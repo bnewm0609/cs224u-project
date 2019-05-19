@@ -70,10 +70,12 @@ class ColorFeaturizer:
         # passed to the call to self.featurizer in the `to_tensor` method, but they aren't right now
         self.featurizer_kwargs = kwargs
     
-    
-        
 
     def to_color_lists(self, colors, normalized):
+        """
+        Convert from a list of color objects to a list of color values
+        in the color space set by self.space
+        """
         # non-standard, but use the space as the variable name
         # to access the color attribute directly
         class_var_name = self.space
@@ -82,6 +84,10 @@ class ColorFeaturizer:
         return [color.__dict__[class_var_name] for color in colors], class_var_name
     
     def to_color_features(self, colors):
+        """
+        Given a list of colors, compute use the feature function to get
+        a each color's features
+        """
         color_lists, space = self.to_color_lists(colors, self.normalized) 
         color_lists = [self.featurizer(color_list, space) for color_list in color_lists]
         return np.array(color_lists)
@@ -97,27 +103,14 @@ class ColorFeaturizer:
         color_tensor = torch.tensor(color_features, dtype=torch.float)
         return color_tensor
     
-    def to_features(self, data_entry):
-        return self.to_color_features(data_entry.colors)
-
 
     def shuffle_colors(self, color_features):
         """
-        Randomly permute colors. Keep track of where the the target ends up
+        Randomly permute colors. Keep track of where each color ends up
         for training and error analysis. If targets is none, assume the target
         is the speaker's target i.e. the 0th element of the original tensor
         """
         permutation = np.random.permutation(len(color_features))
-        # if target:
-        #     # find where the target ended up - useful if you want to train with
-        #     # the listener's selection as the target
-        #     target = (perm == target).nonzero().view(-1)
-        # else:
-        #     # by default use the speaker's target (which is always originally at index 0)
-        #     target = torch.argmin(permutation).view(-1) 
         color_features = np.array(color_features)
         return color_features[permutation], permutation
-
-    def construct_featurizer(self, all_data, **kwargs):
-            pass
 

@@ -18,7 +18,14 @@ class Score(Enum):
     COMPOSITE = auto()
 
 
-def calculate_scores(eval_df, score=Score.SIMPLE):
+def calculate_scores(eval_df, speaker, score=Score.SIMPLE):
+    """
+    Right now, we just support the "SIMPLE" score which is the mean
+    number of correct listener choices. i.e. we are saying the speaker's
+    utterance quality is what uniquely determines how the listener does
+
+    (This function is not used right now, but maybe will be later)
+    """
     if score == score.SIMPLE:
         return eval_df.groupby(speaker.value).mean()
 
