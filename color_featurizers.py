@@ -62,6 +62,8 @@ class ColorFeaturizer:
         take on their full values 0-360 for hue, 0-100 for value/lightness/saturation, 0-255 for rgb
         """
         self.featurizer = featurizer
+        # by default, the target is the 0th entry of the original featurizer
+        self.get_target = lambda permutation, entry: torch.argmin(permutation).view(-1)
         self.space = space
         self.normalized = normalized
         # these are other arguments that the featurizer function could need. They should in theory be
@@ -69,6 +71,8 @@ class ColorFeaturizer:
         self.featurizer_kwargs = kwargs
     
     
+        
+
     def to_color_lists(self, colors, normalized):
         # non-standard, but use the space as the variable name
         # to access the color attribute directly
@@ -77,6 +81,11 @@ class ColorFeaturizer:
             class_var_name = "{}_norm".format(class_var_name)
         return [color.__dict__[class_var_name] for color in colors], class_var_name
     
+    def to_color_features(self, colors):
+        color_lists, space = self.to_color_lists(colors, self.normalized) 
+        color_lists = [self.featurizer(color_list, space) for color_list in color_lists]
+        return np.array(color_lists)
+
     def to_tensor(self, colors):
         """
         Convert colors to tensors where the vectors are the given by applying
@@ -84,19 +93,31 @@ class ColorFeaturizer:
 
         returns all colors as |colors| x |phi| torch tensor
         """
-        color_lists, space = self.to_color_lists(colors, self.normalized) 
-        color_lists = [self.featurizer(color_list, space) for color_list in color_lists]
-        target = color_lists[0] # target is always first color
-        color_tensor = torch.tensor(color_lists, dtype=torch.float) # to get column vectors
+        color_features = self.to_color_features(colors)
+        color_tensor = torch.tensor(color_features, dtype=torch.float)
         return color_tensor
     
-    def shuffle_colors(self, color_tensor):
+    def to_features(self, data_entry):
+        return self.to_color_features(data_entry.colors)
+
+
+    def shuffle_colors(self, color_features):
         """
         Randomly permute colors. Keep track of where the the target ends up
-        for training and error analysis
+        for training and error analysis. If targets is none, assume the target
+        is the speaker's target i.e. the 0th element of the original tensor
         """
-        permutation = torch.randperm(color_tensor.size(0))
-        target = torch.argmin(permutation).view(-1) # target always started at 0
-        return color_tensor[permutation], target
+        permutation = np.random.permutation(len(color_features))
+        # if target:
+        #     # find where the target ended up - useful if you want to train with
+        #     # the listener's selection as the target
+        #     target = (perm == target).nonzero().view(-1)
+        # else:
+        #     # by default use the speaker's target (which is always originally at index 0)
+        #     target = torch.argmin(permutation).view(-1) 
+        color_features = np.array(color_features)
+        return color_features[permutation], permutation
 
+    def construct_featurizer(self, all_data, **kwargs):
+            pass
 

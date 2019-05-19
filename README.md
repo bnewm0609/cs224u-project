@@ -4,7 +4,7 @@ So, this is the code that's been written so far. Some of it is commented and hop
 
 For examples of how I've been using this code, you can look at the `if __name__ == '__main__'` blocks in `experiment.py` and `monroe_data.py` as well as the python notebooks in the `notebooks` directory (though those are definitely a mess)
 
-The data itself is stored in the `data` directory. In the `csv` subdirectory lives the train/dev/test split data that Monroe used as well as the entire dataset in a single csv called `filteredCorups.csv`. In the `entries` subdirectory are pickle files that each store a list of `MonroeDataEntries` (from `monroe_data.py`) for easy loading into a `MonroeData` object that is passed to an experiment from `experiment.py`. (It might take 1-2 minutes to recreate them). An example of how to load them is in the `monroe_data.py` block.
+The data itself is stored in the `data` directory. In the `csv` subdirectory lives the train/dev/test split data that Monroe used as well as the entire dataset in a single csv called `filteredCorups.csv`. In the `entries` subdirectory are pickle files that each store a list of `MonroeDataEntries` (from `monroe_data.py`) for easy loading into a `MonroeData` object that is passed to a FeatureHandler from `experiment.py`. (It might take 1-2 minutes to recreate them). An example of how to load them is in the `monroe_data.py` block.
 
 The only pretrained model has its weights stored in the `models` directory.
 

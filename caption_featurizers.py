@@ -1,6 +1,7 @@
 import nltk
 from collections import Counter
 import torch
+import numpy as np
 
 
 
@@ -83,6 +84,9 @@ class CaptionFeaturizer:
         # hyperparams
         self.unk_threshold = unk_threshold
     
+    def to_features(self, data_entry):
+        return self.to_string_features(data_entry.caption)
+
     def to_tensor(self, caption, construct=False):
         _, indexes = self.to_string_features(caption, construct)
         return torch.tensor(indexes, dtype=torch.long).view(-1, 1)
@@ -112,8 +116,8 @@ class CaptionFeaturizer:
         caption_tokens = self.to_model_format(caption_tokens, construct)
         caption_indices = self.caption_indexer.to_indices(caption_tokens, construct)
         caption_tokens = [self.caption_indexer.get_word_from_idx(index) for index in caption_indices]
-        return caption_tokens, caption_indices
-        
+        return np.array(caption_tokens), np.array(caption_indices)
+    
     def to_model_format(self, tokens, construct):
         """
         Put the tokens into the format expected by the models.
@@ -151,7 +155,7 @@ class CaptionFeaturizer:
             caption_tokens = self.tokenizer.tokenize(entry.caption)
             for token in caption_tokens:
                 self.word_count[token] += 1
-                
+        
         
     
     

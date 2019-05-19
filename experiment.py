@@ -9,187 +9,177 @@ import time
 import math
 
 
-class MonroeExperiment:
 
-    def __init__(self, train_data, test_data, featurizers, model, optimizer=torch.optim.Adadelta,
-                 criterion=nn.NLLLoss, lr=0.2, num_epochs=30):
+# def run_experiment(train_data, assess_data, feature_handler, model, predictions_to_scores, model_scorer,
+#                     model_scorer_kwargs={}, pretrained_file = None):
+    # training
+    # if pretrained_file is None:
+    #     train_features = feature_handler.train_features() # ~6 sec
+    #     train_targets = feature_handler.train_targets() # 1-d np array of targets
+    #     model.fit(train_features, train_targets) # train the model
+    # else:
+    #     model.load_model(pretrained_file)
+
+def evaluate_model(assess_data, feature_handler, model, predictions_to_scores, model_scorer,
+                    model_scorer_kwargs={}, accuracy=True):
+    assess_features = feature_handler.test_features() # ~6 sec
+    assess_targets = feature_handler.test_targets()
+    model_outputs =  model.predict(assess_features)
+    model_scores = predictions_to_scores(model_outputs, assess_targets) # decide what the score we're going to use is
+    result = model_scorer(assess_data, model_scores, **model_scorer_kwargs)
+    print(result)
+
+    if accuracy: # also report accuracy
+        model_predictions = np.argmax(model_outputs, axis=1)
+        accuracy_val = sum(model_predictions == assess_targets) / len(assess_targets)
+        print("Accuracy:", accuracy_val)
+        
+
+    return result
+
+
+class FeatureHandler:
+    """
+    This class handles the interface between the data, the feature functions, and the model.
+    Basically what it does is the following:
+
+    1. Convert MonroeDataEntry to a list of np.array's per speaker using the caption and color feature
+       functions along with any other feature functions that the model needs
+    2. Converts the MonroeDataEntry to the prediction targets also by applying some user-specified function
+       to each of the data entries
+    3. Handles color order randomization
+
+    It does this for both the train and assessment datasets. From here, you should be able
+    to call a model's fit method with the resutls of a `train_features` as X and `train_targets` as y
+    """
+    def __init__(self, train_data, test_data, caption_phi, color_phi, extra_featurizers=[],
+                 target_fn=None, randomized_colors=True):
         """
-        Right now this is kind of ugly because you have to pass literally all of the experiment arguments
-        to this constructor. 
+        tain_data - training data (type: MonroeData)
+        test_data - assessment data (type: MonroeData)
+        caption_phi - caption feature function (type: CaptionFeaturizer). Should not have called `construct_featurizer`
+                      method yet
+        color_phi   - color feature function (type: ColorFeaturizer)
+        extra_featurizers - list any other feature functions to include. Each should have a `to_features`
+                            method that takes a MonroeDataEntry to a feature
+        target_fn - function for mapping MonroeDataentry (and permuation if randomized_colors is true)
+                    to a *single value*
+        randomized_colors - True if color order should be randomized, False if should be fixed with target first.
+
         """
+        self.caption_featurizer = caption_phi
+        self.caption_featurizer.construct_featurizer(train_data)
+
+        self.color_featurizer = color_phi
+
+        self.extra_featurizers = extra_featurizers
         self.train_data = train_data
         self.test_data = test_data
-        self.caption_featurizer = featurizers['caption']
-        self.color_featurizer = featurizers['color']
-        self.model = model
+        self.randomized_colors = randomized_colors
 
-        self.optimizer = optimizer
-        self.criterion = criterion
-
-        # misc args:
-        self.lr = 0.2
-        self.num_epochs = num_epochs
-
-        # for reproducibility, store training pairs
-        self.train_pairs = None
-
-        # also make sure the model has been initialized before we do anything
-        self.initialized = False
-
-    def train_iter(self, caption_tensor, color_tensor, target, optimizer, criterion):
-        """
-        Iterates through a single training pair, querying the model, getting a loss and
-        updating the parameters. (TODO: addd some kind of batching to this).
-
-        Very much inspired by the torch NMT example/tutorial thingy
-        """
-        start_states = self.model.init_hidden_and_context()
-        input_length = caption_tensor.size(0)
-        optimizer.zero_grad()
-        loss = 0
-
-        model_output, _, _ = self.model(caption_tensor, start_states, color_tensor)
-        model_output = model_output.view(1, -1)
-
-        loss += criterion(model_output, target)
-        loss.backward()
-        optimizer.step()
-
-        return loss
-
-    def get_pairs(self, data, construct=False):
-        """
-        Generates "pairs" - tuples of (caption features, color features, target color index)
-        for each entry in the specified dataset. Construct is only True if we have not 
-        yet constructed the caption indexer, and will signal the caption featurizer to 
-        construct the vocab index. It is only going to be true when called in the
-        `init_model` function
-        """
-        # create pairs (caption, colors, target)
-        pairs = []
-        for entry in data:
-            caption_features = self.caption_featurizer.to_tensor(entry.caption, construct=construct)
-            color_features = self.color_featurizer.to_tensor(entry.colors)
-            color_features, target = self.color_featurizer.shuffle_colors(color_features)
-
-            pairs.append((caption_features, color_features, target))
-
-        return pairs
-
-    # from https://pytorch.org/tutorials/intermediate/seq2seq_translation_tutorial.html
-    def asMinutes(self, s):
-        m = math.floor(s / 60)
-        s -= m * 60
-        return '%dm %ds' % (m, s)
-
-
-    def init_model(self, **model_params):
-        """
-        Interesting quirk - in most cases, the model takes the vocabulary size
-        as an input, but there's no way for the user to know what the vocab
-        size is before calling the init_model method. Even though it's kinda ugly,
-        what we can do instead is pass all of the model params (named) minus
-        the vocab size to this function, and it will create the model. I don't 
-        really like this but it works for now
-        """
-        if self.initialized:
-            return
-
-        self.caption_featurizer.construct_featurizer(self.train_data)
-        self.train_pairs = self.get_pairs(self.train_data, construct=True)
-        model_params['vocab_size'] = self.caption_featurizer.caption_indexer.size
-        self.model = self.model(**model_params)
-        self.initialized = True
-
-    def train_model(self):
-        # training pairs should have already been created by calling init model
-        if not self.initialized:
-            print("Make sure you initialize the model with the parameters you want")
-            return
-
-
-        optimizer = self.optimizer(lr=self.lr, params=self.model.parameters())
-        criterion = self.criterion()
-
-        start_time = time.time()
-        store_losses_every = 100
-        print_losses_every = 1000
-        self.stored_losses = [] # theoretically we store losses so we can plot them later - 
-                                # I don't think this part of the code works though. What we
-                                # can do instead is take a few thousand or so training examples
-                                # out and use them for "evaluation" every 1 epoch or so
-        for epoch in range(self.num_epochs):
-            print("---EPOCH {}---".format(epoch))
-            stored_loss_total = 0
-            print_loss_total = 0
-
-            for i, pair in enumerate(self.train_pairs):
-                caption, colors, target = pair
-                # print(target)
-
-                loss = self.train_iter(caption, colors, target, optimizer, criterion)
-                stored_loss_total += loss.item()
-                print_loss_total += loss.item()
-
-                if i % print_losses_every == 0:
-                    print_loss_avg = print_loss_total / print_losses_every
-                    print("{} ({}:{} {:.2f}%) {:.4f}".format(self.asMinutes(time.time() - start_time),
-                                                      epoch, i, i/len(self.train_pairs)*100,
-                                                      print_loss_avg))
-                    print_loss_total = 0
-
-                if i % store_losses_every == 0:
-                    stored_loss_avg = stored_loss_total / store_losses_every
-                    self.stored_losses.append(stored_loss_avg)
-                    stored_loss_total = 0
-
-
-    def evaluate_iter(self, pair):
-        """
-        Same as train_iter except don't use an optimizer and gradients or anything
-        like that
-        """
-        with torch.no_grad():
-            caption_tensor, color_tensor, target = pair
-            start_states = self.model.init_hidden_and_context()
-            model_output, _, _ = self.model(caption_tensor, start_states, color_tensor)
-
-            model_output = model_output.view(1, -1)
-            if torch.argmax(model_output).item() == target.item():
-                return 1, model_output
+        if target_fn is None:
+            # by default just use the color at the target index as the target
+            if self.randomized_colors:
+                self.target_fn = lambda de, color_perm: np.where(color_perm==de.target_idx)[0][0] # first idx for tuple, second for getting raw number
             else:
-                return 0, model_output
+                self.target_fn = lambda de: de.target_idx # should be 0, but just in case
+
+        # for keeping track of where colors ended up if randomized
+        self.train_color_permutations = []
+        self.test_color_permutations = []
+
+        # only construct caption index once
+        self.constructed_index = False
 
 
-    def evaluate_model(self):
+    def get_features(self, data, construct=False):
         """
-        Evaluate model accuracy
+        Extracts caption features and color features from data entries using their respective
+        feature functions. Randomize and store color order if required
         """
-        test_pairs = self.get_pairs(self.test_data)
-        self.model.eval()
+        features = []
+        for data_entry in data:
+            entry_features = []
+            # Get caption features
+            if self.caption_featurizer is not None:
+                _, idx_features = self.caption_featurizer.to_string_features(data_entry.caption, construct) # construct index while training
+                entry_features.append(idx_features)
 
-        total_correct = 0
-        for pair in test_pairs:
-            correct, _ = self.evaluate_iter(pair)
-            total_correct += correct
+            # Get color features (and randomize order if needed)
+            if self.color_featurizer is not None:
+                color_features = self.color_featurizer.to_color_features(data_entry.colors)
 
-        accuracy = total_correct/len(self.test_data)
-        print("Accuracy: {}".format(accuracy))
-        return accuracy
+                if self.randomized_colors:
+                    color_features, permutations = self.color_featurizer.shuffle_colors(color_features)
+                    if construct:
+                        self.train_color_permutations.append(permutations)
+                    else:
+                        self.test_color_permutations.append(permutations)
 
-    def load_model(self, filename):
-        """
-        Load model from saved file at filename
-        """
-        if not self.initialized:
-            self.init_model
-        self.model.load_state_dict(torch.load(filename))
+                entry_features.append(color_features)
 
-    def save_model(self, filename):
+            # Get any other features
+            for featurizer in self.extra_featurizers:
+                entry_features.append(featurizer.to_features(data_entry))
+            features.append(entry_features)
+
+        return features
+
+    def train_features(self):
         """
-        Save model to file at filename
+        Wrapper function for get_features that calls specifically with train data. Should
+        only be called once because it also constructs the index
         """
-        torch.save(self.model.state_dict(), filename)
+        features = self.get_features(self.train_data, construct=(not self.constructed_index)) # will only construct index the first time
+        self.constructed_index = True
+        return features
+
+
+    def test_features(self):
+        """
+        Wrapper function for get_features that calls specifically with assess data
+        """
+        return self.get_features(self.test_data)
+
+    def get_targets(self, data, permutations=[]):
+        """
+        Given data, iterates through it and extracts whatever the target of the model prediction
+        will be by calling self.target_fn on the entry. If we are going to be predicting color
+        indices we need to know where the target color index ended up. To this end, we also pass
+        in the permuted indices list in permutations.
+
+        A way around this would be to actually change the raw entry and get the target index with
+        entry.target_idx, but that kind of scares me...
+        """
+        if len(permutations) == 0 and self.randomized_colors:
+            print("Make sure to call feature function before target function so color permutations can be used when generating targets")
+            return
+
+        targets = []
+        # we need to pass in the permutations to the target functions
+        # so we know where each color ended up - this is kind of ugly
+        # but needed if our task is predicting colors (not needed otherwise)
+        # but included when color is randomized
+        for i, data_entry in enumerate(data):
+            if len(permutations) == 0:
+                targets.append(self.target_fn(data_entry))
+            else:
+                targets.append(self.target_fn(data_entry, permutations[i]))
+        return np.array(targets)
+
+
+    def train_targets(self):
+        """
+        Wrapper function for get_targets that calls specifically with train data
+        """
+        return self.get_targets(self.train_data, self.train_color_permutations)
+
+
+    def test_targets(self):
+        """
+        Wrapper function for get_targets that calls specifically with assess data
+        """
+        return self.get_targets(self.test_data, self.test_color_permutations)
 
 
 if __name__ == "__main__":
@@ -197,7 +187,9 @@ if __name__ == "__main__":
     from monroe_data import MonroeData, MonroeDataEntry, Color # last two for reading pkl file
     from caption_featurizers import CaptionFeaturizer
     from color_featurizers import ColorFeaturizer, color_phi_fourier
-    from models import CaptionEncoder
+    from models import CaptionEncoder, LiteralListener
+    from evaluation import score_model
+    import sys
 
     print("Loading training and dev data")
     train_data = MonroeData("data/csv/train_corpus_monroe.csv", "data/entries/train_entries_monroe.pkl")
@@ -206,17 +198,31 @@ if __name__ == "__main__":
     print("Initializing featurizers")
     caption_phi = CaptionFeaturizer()
     color_phi = ColorFeaturizer(color_phi_fourier, "rgb", normalized=True)
+    feature_handler = FeatureHandler(train_data, dev_data, caption_phi, color_phi) # target function is initialized by default
+
+    print("Obtaining training features")  # have to get train featurs to get vocab size (EVEN IF YOU'RE RUNNING PRETRAINED MODEL)
+    train_features = feature_handler.train_features()
+    train_targets = feature_handler.train_targets()
+    # print(train_targets[:10])
 
     print("Initializing model")
     # model parameters
     embed_dim = 100; hidden_dim = 100; color_dim= 54;# hard coded for example - 54 comes from color fourier phi
-    experiment = MonroeExperiment(train_data, dev_data, {'caption':caption_phi, 'color':color_phi}, CaptionEncoder)
-    experiment.init_model(embed_dim = embed_dim, hidden_dim=hidden_dim, color_dim=color_dim) # pass model params (minus vocab size)
+    model = LiteralListener(CaptionEncoder, num_epochs=5)
+    model.init_model(embed_dim = embed_dim, hidden_dim = hidden_dim, vocab_size = feature_handler.caption_featurizer.caption_indexer.size,
+                 color_dim = color_dim)
 
-    # to train: (probably takes about 2 hrs)
-    # experiment.train_model()
+    # to train: (probably takes about 15 min - 2 hrs) depending on # of epochs (5 - 30)
+    # print("Training model")
+    # model.fit(train_features, train_targets)
+    # model.save_model("model/literal_listener_5epoch.params")
 
     print("Loading and evaluating pretrained model")
-    experiment.load_model("models/literal_listener.params")
-    experiment.evaluate_model()
+    model.load_model("model/literal_listener_5epoch.params")
+
+    # convert the model output to a score for that particular round
+    output_to_score = lambda model_outputs, targets: np.exp(model_outputs[np.arange(len(model_outputs)), targets]) # get the model's predicted probablity at each target index and use that as the score
+    evaluate_model(dev_data, feature_handler, model, output_to_score, score_model)
+
+
 
