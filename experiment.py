@@ -85,6 +85,8 @@ class FeatureHandler:
                 self.target_fn = lambda de, color_perm: np.where(color_perm==de.target_idx)[0][0] # first idx for tuple, second for getting raw number
             else:
                 self.target_fn = lambda de: de.target_idx # should be 0, but just in case
+        else:
+            self.target_fn = target_fn
 
         # for keeping track of where colors ended up if randomized
         self.train_color_permutations = []
@@ -141,7 +143,7 @@ class FeatureHandler:
         """
         Wrapper function for get_features that calls specifically with assess data
         """
-        if len(self.test_color_permutations) > 0:
+        if self.randomized_colors:
             # reset permutations for another round
             self.test_color_permutations = []
         return self.get_features(self.test_data)
