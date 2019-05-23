@@ -83,6 +83,9 @@ class CaptionFeaturizer:
         
         # hyperparams
         self.unk_threshold = unk_threshold
+
+        self.initialized = False
+
     
     def to_features(self, data_entry):
         return self.to_string_features(data_entry.caption)
@@ -112,10 +115,14 @@ class CaptionFeaturizer:
                 to tensor to be fed into the model
         
         """
+        constrcut = construct and not self.initialized # don't construct index if we already did in construct_featurizer
+        # automatically construct the index if it isn't initialized yet
         caption_tokens = self.tokenizer.tokenize(caption)
         caption_tokens = self.to_model_format(caption_tokens, construct)
         caption_indices = self.caption_indexer.to_indices(caption_tokens, construct)
         caption_tokens = [self.caption_indexer.get_word_from_idx(index) for index in caption_indices]
+
+
         return np.array(caption_tokens), np.array(caption_indices)
     
     def to_model_format(self, tokens, construct):
@@ -146,7 +153,7 @@ class CaptionFeaturizer:
         tokens = [self.caption_indexer.SOS] + tokens + [self.caption_indexer.EOS]
         return tokens
     
-    def construct_featurizer(self, data_entries):
+    def construct_featurizer(self, data_entries, construct_idx=True):
         """
         data_entries is of type MonroeData. 
         """
@@ -155,7 +162,15 @@ class CaptionFeaturizer:
             caption_tokens = self.tokenizer.tokenize(entry.caption)
             for token in caption_tokens:
                 self.word_count[token] += 1
-        
-        
-    
-    
+
+        if construct_idx:
+            # just construct the index so we don't have to worry about calling
+            # anything with the construct=True argument to to_string_features
+            for entry in data_entries:
+                _ = self.to_string_features(entry.caption, construct=True)
+            self.initialized = True
+
+
+
+
+

@@ -68,6 +68,7 @@ class FeatureHandler:
 
         """
         self.caption_featurizer = caption_phi
+        # constructs indexer by default now
         self.caption_featurizer.construct_featurizer(train_data)
 
         self.color_featurizer = color_phi
@@ -102,7 +103,7 @@ class FeatureHandler:
             entry_features = []
             # Get caption features
             if self.caption_featurizer is not None:
-                _, idx_features = self.caption_featurizer.to_string_features(data_entry.caption, construct) # construct index while training
+                _, idx_features = self.caption_featurizer.to_string_features(data_entry.caption)
                 entry_features.append(idx_features)
 
             # Get color features (and randomize order if needed)
@@ -139,6 +140,9 @@ class FeatureHandler:
         """
         Wrapper function for get_features that calls specifically with assess data
         """
+        if len(self.test_color_permutations) > 0:
+            # reset permutations for another round
+            self.test_color_permutations = []
         return self.get_features(self.test_data)
 
     def get_targets(self, data, permutations=[]):
@@ -150,6 +154,8 @@ class FeatureHandler:
 
         A way around this would be to actually change the raw entry and get the target index with
         entry.target_idx, but that kind of scares me...
+
+        Returns a (len(data),) shape np.array with the targets
         """
         if len(permutations) == 0 and self.randomized_colors:
             print("Make sure to call feature function before target function so color permutations can be used when generating targets")
@@ -165,7 +171,7 @@ class FeatureHandler:
                 targets.append(self.target_fn(data_entry))
             else:
                 targets.append(self.target_fn(data_entry, permutations[i]))
-        return np.array(targets)
+        return np.array(targets).flatten()
 
 
     def train_targets(self):
@@ -215,9 +221,10 @@ if __name__ == "__main__":
     # to train: (probably takes about 15 min - 2 hrs) depending on # of epochs (5 - 30)
     # print("Training model")
     # model.fit(train_features, train_targets)
-    # model.save_model("model/literal_listener_5epoch.params")
+    # model.save_model("model/literal_listener_5epoch-2.params")
 
     print("Loading and evaluating pretrained model")
+    # model.load_model("model/literal_listener_5epoch-2.params")
     model.load_model("model/literal_listener_5epoch.params")
 
     # convert the model output to a score for that particular round

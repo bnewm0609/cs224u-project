@@ -24,13 +24,18 @@ def color_phi_fourier(color_list, space, resolution=3):
     This is lifted straight from https://github.com/futurulus/colors-in-context/blob/2e7b830668cd039830154e7e8f211c6d4415d30f/vectorizers.py#L650
     Haven't figured out how it works yet. but it seems to be the only feature function to get somewhat decent results so far
     """
-    if space != "rgb_norm":
-        print("Space must be rgb_norm to use fourier transform")
+    if space not in ("rgb_norm", "hsv_norm"):
+        print("Space must be rgb_norm or hsv_norm to use fourier transform")
         return None
 
     resolution = [resolution for _ in color_list]
     colors = np.array([color_list])
-    ranges = np.array([256, 256, 256])
+    # I'm pretty sure ranges aren't actually used anywhere...
+    if space == "rgb_norm":
+        ranges = np.array([256, 256, 256])
+    else:
+        ranges = np.array([361, 101, 101])
+
     
     # Using a Fourier representation causes colors at the boundary of the
     # space to behave as if the space is toroidal: red = 255 would be
@@ -38,7 +43,11 @@ def color_phi_fourier(color_list, space, resolution=3):
     # all of the rgb values by 2. (If we were doing this with hsv
     # we wouldn't divide the h value by two becaus it actually is 
     # polar, so 360 is close to 0 (both are red)
-    xyz = colors / 2
+    if space == "rgb_norm":
+        xyz = colors / 2
+    else:
+        xyz = colors / 2
+        xyz[:, 0] *= 2 # this is the 'h' of the 'hsv'
 
     ax, ay, az = [np.arange(0, g) for g, r in zip(resolution, ranges)]
     gx, gy, gz = np.meshgrid(ax, ay, az)
@@ -77,7 +86,7 @@ class ColorFeaturizer:
         in the color space set by self.space
         """
         # non-standard, but use the space as the variable name
-        # to access the color attribute directly
+        # to access the color attribute directly from the color objects
         class_var_name = self.space
         if normalized:
             class_var_name = "{}_norm".format(class_var_name)
