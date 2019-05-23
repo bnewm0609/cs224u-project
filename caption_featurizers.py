@@ -115,7 +115,7 @@ class CaptionFeaturizer:
                 to tensor to be fed into the model
         
         """
-        constrcut = construct and not self.initialized # don't construct index if we already did in construct_featurizer
+        construct = construct and not self.initialized # don't construct index if we already did in construct_featurizer
         # automatically construct the index if it isn't initialized yet
         caption_tokens = self.tokenizer.tokenize(caption)
         caption_tokens = self.to_model_format(caption_tokens, construct)
