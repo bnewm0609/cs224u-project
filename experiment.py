@@ -4,6 +4,7 @@ import numpy as np
 from monroe_data import MonroeData, MonroeDataEntry, Color # last two for reading pkl file
 from caption_featurizers import CaptionFeaturizer
 from color_featurizers import ColorFeaturizer, color_phi_fourier
+from evaluation import score_model
 
 import time
 import math
@@ -194,7 +195,6 @@ if __name__ == "__main__":
     from caption_featurizers import CaptionFeaturizer
     from color_featurizers import ColorFeaturizer, color_phi_fourier
     from models import CaptionEncoder, LiteralListener
-    from evaluation import score_model
     import sys
 
     print("Loading training and dev data")
