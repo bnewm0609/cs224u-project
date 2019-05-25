@@ -4,6 +4,7 @@ import numpy as np
 from monroe_data import MonroeData, MonroeDataEntry, Color # last two for reading pkl file
 from caption_featurizers import CaptionFeaturizer
 from color_featurizers import ColorFeaturizer, color_phi_fourier
+from evaluation import score_model
 
 import time
 import math
@@ -84,6 +85,8 @@ class FeatureHandler:
                 self.target_fn = lambda de, color_perm: np.where(color_perm==de.target_idx)[0][0] # first idx for tuple, second for getting raw number
             else:
                 self.target_fn = lambda de: de.target_idx # should be 0, but just in case
+        else:
+            self.target_fn = target_fn
 
         # for keeping track of where colors ended up if randomized
         self.train_color_permutations = []
@@ -140,7 +143,7 @@ class FeatureHandler:
         """
         Wrapper function for get_features that calls specifically with assess data
         """
-        if len(self.test_color_permutations) > 0:
+        if self.randomized_colors:
             # reset permutations for another round
             self.test_color_permutations = []
         return self.get_features(self.test_data)
@@ -194,7 +197,6 @@ if __name__ == "__main__":
     from caption_featurizers import CaptionFeaturizer
     from color_featurizers import ColorFeaturizer, color_phi_fourier
     from models import CaptionEncoder, LiteralListener
-    from evaluation import score_model
     import sys
 
     print("Loading training and dev data")

@@ -267,7 +267,7 @@ class LiteralListener(PytorchModel):
         for i, feature in enumerate(X):
             caption, colors = feature
             caption = torch.tensor([caption], dtype=torch.long)
-            colors = torch.tensor(colors, dtype=torch.float)
+            colors = torch.tensor([colors], dtype=torch.float)
             model_output_np = self.evaluate_iter((caption, colors)).view(-1).numpy()
             model_outputs[i] = model_output_np
 
