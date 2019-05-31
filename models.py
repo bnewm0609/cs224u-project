@@ -338,6 +338,8 @@ class LiteralSpeaker(PytorchModel):
         with torch.no_grad():
             for color_features_tensor in X:
                 tokens = torch.tensor([start_token])
+                color_features_tensor = np.flip(color_features_tensor.numpy(), axis=1).copy()
+                color_features_tensor = torch.from_numpy(color_features_tensor);
                 for i in range(self.max_gen_len):
                     vocab_preds = self.model(color_features_tensor, tokens)[:,-1:,:] # just distribution over last token
                     _, prediction_index = vocab_preds.max(2)  # taking the max over the innermost (2nd) axis
@@ -361,6 +363,9 @@ class LiteralSpeaker(PytorchModel):
         optimizer.zero_grad()
         loss = 0
 
+        # target color is FIRST in the tensor, so flip it so it's LAST
+        color_features_tensor = np.flip(color_features_tensor.numpy(), axis=1).copy()
+        color_features_tensor = torch.from_numpy(color_features_tensor);
         # color_features = color_encoder(color_tensor)
         model_output = self.model(color_tensor, caption_tensor)
 

@@ -18,6 +18,7 @@ import argparse
 # 0.1 Data - all the same data is used in each of these experiments
 train_data = None # MonroeData("data/csv/train_corpus_monroe.csv", "data/entries/train_entries_monroe.pkl")
 dev_data = None # MonroeData("data/csv/dev_corpus_monroe.csv", "data/entries/dev_entries_monroe.pkl")
+# write a function to do this so it takes less time to debug argparse stuff
 def load_data():
     global train_data, dev_data
     train_data = MonroeData("data/csv/train_corpus_monroe.csv", "data/entries/train_entries_monroe.pkl")
@@ -100,6 +101,9 @@ def literal_listener_listener_click_experiment(train=False, model_file="model/li
     # convert the model output to a score for that particular round
     print("Evaluating model")
     output_to_score = lambda model_outputs, targets: np.exp(model_outputs[np.arange(len(model_outputs)), targets]) # get the model's predicted probablity at each target index and use that as the score
+    # we want to score based on the model's predictions at the TARGET indices not listener clicked indices, 
+    # so we change the feature_handler's target function to do that:
+    feature_handler.target_fn = lambda data_entry, color_perm: np.where(color_perm == data_entry.target_idx)[0]
     evaluate_model(dev_data, feature_handler, model, output_to_score, score_model)
 
 # 3. Literal Speaker
@@ -109,16 +113,17 @@ def literal_speaker_experiment(train=False, model_file="model/literal_speaker_5e
     caption_phi = caption_featurizers.CaptionFeaturizer(tokenizer=caption_featurizers.WhitespaceTokenizer)  # use normal whitespace tokenizer (default)
 
     # This is the kind of feature function defined in color_featurizers.py
-    def flip_color_phi_fourier(color_list, space):
-        """ color_list is a list of Color objects (defined in monroe_data.py) """
-        color_features = color_phi_fourier(color_list, space)
-        # reverse color order so target is last - this makes it so the last hidden state of
-        # the color encoder LSTM has more recent info about the target color (shouldn't matter but that's what Monroe does)
-        # We make a copy so it's compatible with pytorch tensors - pytorch doesn't like backwards np.arrays for some reason
-        color_features = np.flip(color_features, axis=0).copy()
-        return color_features
+    # NOTE: THIS DOES NOT WORK - IT FLIPS COLORS vectors individually rather than the order of all the vectors
+    # def flip_color_phi_fourier(color_list, space):
+    #     """ color_list is a list of coordinates in the given color space (i.e. [1, 0, 0] for red in rgb_norm """
+    #     color_features = color_phi_fourier(color_list, space)
+    #     # reverse color order so target is last - this makes it so the last hidden state of
+    #     # the color encoder LSTM has more recent info about the target color (shouldn't matter but that's what Monroe does)
+    #     # We make a copy so it's compatible with pytorch tensors - pytorch doesn't like backwards np.arrays for some reason
+    #     color_features = np.flip(color_features, axis=0).copy()
+    #     return color_features
 
-    color_phi = ColorFeaturizer(flip_color_phi_fourier, "hsv", normalized=True) # speaker uses hsv 
+    color_phi = ColorFeaturizer(color_phi_fourier, "hsv", normalized=True) # speaker uses hsv 
     
     # speaker's target is to predict tokens following the SOS token
     def speaker_target(data_entry):

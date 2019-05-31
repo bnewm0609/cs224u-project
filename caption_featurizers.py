@@ -97,13 +97,13 @@ class CaptionFeaturizer:
     def to_string_features(self, caption, construct=False):
         """
         Params:
-        caption:   string hodling caption that will converted to tokens and
-                   indices. 
-        construct: if we are constructing the featurizer for the first time,
-                   this should be true. It performs the unk substitutions 
-                   manually based on the contents of self.word_count and 
-                   also adds the sentences to the indexer. Should only be
-                   true when training for the first time.
+        caption   - string hodling caption that will converted to tokens and
+                    indices. 
+        construct - if we are constructing the featurizer for the first time,
+                    this should be true. It performs the unk substitutions 
+                    manually based on the contents of self.word_count and 
+                    also adds the sentences to the indexer. Should only be
+                    true when training for the first time.
                    
         Returns:
         Tuple(tokens, indices). 
@@ -134,12 +134,12 @@ class CaptionFeaturizer:
         featurizer for the first time)
         
         Params:
-        tokens: 
-        construct: if we are constructing the featurizer for the first time,
-                   this should be true. It performs the unk substitutions 
-                   manually based on the contents of self.word_count and 
-                   also adds the sentences to the indexer. Should only be
-                   true when training for the first time.
+        tokens 
+        construct - if we are constructing the featurizer for the first time,
+                    this should be true. It performs the unk substitutions 
+                    manually based on the contents of self.word_count and 
+                    also adds the sentences to the indexer. Should only be
+                    true when training for the first time.
         """
         if construct:
             if self.word_count is None:
@@ -155,7 +155,8 @@ class CaptionFeaturizer:
     
     def construct_featurizer(self, data_entries, construct_idx=True):
         """
-        data_entries is of type MonroeData. 
+        Params:
+        data_entries - is of type MonroeData. 
         """
         self.word_count = Counter()
         for entry in data_entries:
