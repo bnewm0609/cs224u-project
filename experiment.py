@@ -174,7 +174,10 @@ class FeatureHandler:
                 targets.append(self.target_fn(data_entry))
             else:
                 targets.append(self.target_fn(data_entry, permutations[i]))
-        return np.array(targets).flatten()
+        targets = np.array(targets)
+        if (targets.shape[-1] == 1):
+            targets = np.array(targets).flatten()
+        return targets
 
 
     def train_targets(self):

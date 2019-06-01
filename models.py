@@ -47,8 +47,11 @@ class CaptionEncoder(nn.Module):
         embeddings = self.embed(caption)
         output, (hn, cn) = self.lstm(embeddings, states)
         
-        # we only care about last output (first dim is batch size)
-        output = output[:,-1,:] 
+        # we only care about last output (first dim is batch size) 
+        # here we are concatenating the the last output vector of the forward direction (at index -1)
+        # and the last output vector of the first direction (at index 0)
+        output = torch.cat((output[:, -1, :self.hidden_dim],
+                            output[:, 0, self.hidden_dim:]), 1) 
 
         output_mean = self.mean(output)[0]
         output_covariance = self.covariance(output)[0]
@@ -86,7 +89,8 @@ class ColorEncoder(nn.Module):
         color_states = self.init_hidden_and_context()
         color_output, (hn, cn) = self.color_lstm(colors, color_states)
         # target is last - return hidden representation, why not context i have no idea
-        return hn
+        color_output = color_output[:, -1, :]
+        return color_output 
 
     def init_hidden_and_context(self):
         return (torch.zeros(1, 1, self.hidden_dim),
@@ -364,8 +368,8 @@ class LiteralSpeaker(PytorchModel):
         loss = 0
 
         # target color is FIRST in the tensor, so flip it so it's LAST
-        color_features_tensor = np.flip(color_features_tensor.numpy(), axis=1).copy()
-        color_features_tensor = torch.from_numpy(color_features_tensor);
+        color_tensor = np.flip(color_tensor.numpy(), axis=1).copy()
+        color_tensor = torch.from_numpy(color_tensor);
         # color_features = color_encoder(color_tensor)
         model_output = self.model(color_tensor, caption_tensor)
 

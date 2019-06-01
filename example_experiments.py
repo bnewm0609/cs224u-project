@@ -119,17 +119,6 @@ def literal_speaker_experiment(train=False, epochs=5, color_in_dim = 54, color_d
     print("Initializing featurizers")
     caption_phi = caption_featurizers.CaptionFeaturizer(tokenizer=caption_featurizers.WhitespaceTokenizer)  # use normal whitespace tokenizer (default)
 
-    # This is the kind of feature function defined in color_featurizers.py
-    # NOTE: THIS DOES NOT WORK - IT FLIPS COLORS vectors individually rather than the order of all the vectors
-    # def flip_color_phi_fourier(color_list, space):
-    #     """ color_list is a list of coordinates in the given color space (i.e. [1, 0, 0] for red in rgb_norm """
-    #     color_features = color_phi_fourier(color_list, space)
-    #     # reverse color order so target is last - this makes it so the last hidden state of
-    #     # the color encoder LSTM has more recent info about the target color (shouldn't matter but that's what Monroe does)
-    #     # We make a copy so it's compatible with pytorch tensors - pytorch doesn't like backwards np.arrays for some reason
-    #     color_features = np.flip(color_features, axis=0).copy()
-    #     return color_features
-
     color_phi = ColorFeaturizer(color_phi_fourier, "hsv", normalized=True) # speaker uses hsv 
     
     # speaker's target is to predict tokens following the SOS token
