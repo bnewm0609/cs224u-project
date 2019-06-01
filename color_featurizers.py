@@ -63,7 +63,7 @@ def color_phi_fourier(color_list, space, resolution=3):
 class ColorFeaturizer:
     def __init__(self, featurizer, space, normalized=True, **kwargs):
         """
-        Params
+        Params:
         - featurizer is a function to apply to each color to extract the feature representation
         of that color
         - space is hsv, rgb, or hsl
