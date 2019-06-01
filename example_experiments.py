@@ -68,7 +68,7 @@ def literal_listener_experiment(train=False, evaluate=True, epochs=5, embed_dim 
 # 2. Literal Listener (trained with listener selections as target)
 # -----------------------------------------
 #    Everything is the same other than the target function
-def literal_listener_listener_click_experiment(train=False, epochs=5, embed_dim = 100, hidden_dim = 100, color_dim= 54, model_file="model/literal_listener_listener_click_5epoch_endings_tkn.params"):
+def literal_listener_listener_click_experiment(train=False, evaluate=True, epochs=5, embed_dim = 100, hidden_dim = 100, color_dim= 54, model_file="model/literal_listener_listener_click_5epoch_endings_tkn.params"):
     
     # Initializing featurizers
     print("Initializing featurizers")
@@ -114,7 +114,7 @@ def literal_listener_listener_click_experiment(train=False, epochs=5, embed_dim 
 
 # 3. Literal Speaker
 # -----------------------------------------
-def literal_speaker_experiment(train=False, epochs=5, color_in_dim = 54, color_dim = 100, embed_dim = 100, hidden_dim = 100, lr = 0.004, model_file="model/literal_speaker_5epoch.params"):
+def literal_speaker_experiment(train=False, evaluate=True, epochs=5, color_in_dim = 54, color_dim = 100, embed_dim = 100, hidden_dim = 100, lr = 0.004, model_file="model/literal_speaker_5epoch.params"):
     # Initializing featurizers
     print("Initializing featurizers")
     caption_phi = caption_featurizers.CaptionFeaturizer(tokenizer=caption_featurizers.WhitespaceTokenizer)  # use normal whitespace tokenizer (default)
@@ -134,18 +134,18 @@ def literal_speaker_experiment(train=False, epochs=5, color_in_dim = 54, color_d
     train_targets = feature_handler.train_targets()
 
     print("Initializing model")
-    speaker_model = LiteralSpeaker(CaptionGenerator, optimizer=torch.optim.Adam, lr=lr, num_epochs=epochs)
+    model = LiteralSpeaker(CaptionGenerator, optimizer=torch.optim.Adam, lr=lr, num_epochs=epochs)
     #lit_speaker = Speaker(color_embed_dim, caption_phi.caption_indexer.size, embed_dim, hidden_dim)
-    speaker_model.init_model(color_in_dim=color_in_dim, color_dim=color_dim,
+    model.init_model(color_in_dim=color_in_dim, color_dim=color_dim,
                                   vocab_size=caption_phi.caption_indexer.size, embed_dim=embed_dim,
                                  speaker_hidden_dim=hidden_dim)
     if train:
         print("Training model and saving to {}:".format(model_file))
-        speaker_model.fit(train_features, train_targets)
-        speaker_model.save_model(model_file)
+        model.fit(train_features, train_targets)
+        model.save_model(model_file)
     else:
         print("Loading pretrained model")
-        speaker_model.load_model(model_file)
+        model.load_model(model_file)
 
     if evaluate:
         # do some kind of evaluation...

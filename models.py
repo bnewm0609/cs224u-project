@@ -316,10 +316,11 @@ class LiteralListener(PytorchModel):
 
 
 class LiteralSpeaker(PytorchModel):
+    
     def __init__(self, model, max_gen_len=20, **kwargs):
         super(LiteralSpeaker, self).__init__(model, **kwargs)
         self.max_gen_len = max_gen_len
-
+        
     def predict(self, X):
         """
         There are a bunch of choices for what we might want to do here:
@@ -334,21 +335,26 @@ class LiteralSpeaker(PytorchModel):
         run. We are greedily taking the most likely token
         """
         # Create a tensor with just the starting token
-        _, start_end_tokens = caption_phi.to_string_features("")
-        start_token = start_end_tokens[:1]
         all_tokens = []
+        max_gen_len = 20
 
         self.model.eval()
         with torch.no_grad():
-            for color_features_tensor in X:
-                tokens = torch.tensor([start_token])
+            for i, feature in enumerate(X):
+                caption, colors = feature
+                caption = torch.tensor([caption], dtype=torch.long)
+                colors = torch.tensor([colors], dtype=torch.float)
+                colors = np.flip(colors.numpy(), axis=1).copy()
+                colors = torch.from_numpy(colors)
+                color_features_tensor = colors
+                tokens = caption[:, 0].view(-1, 1)
                 color_features_tensor = np.flip(color_features_tensor.numpy(), axis=1).copy()
                 color_features_tensor = torch.from_numpy(color_features_tensor);
-                for i in range(self.max_gen_len):
+                for i in range(max_gen_len):
                     vocab_preds = self.model(color_features_tensor, tokens)[:,-1:,:] # just distribution over last token
                     _, prediction_index = vocab_preds.max(2)  # taking the max over the innermost (2nd) axis
                     tokens = torch.cat((tokens, prediction_index), dim=1)
-                    if prediction_index.item() == end_index:
+                    if prediction_index.item() == caption[:, -1].view(-1, 1):
                         break
                 all_tokens.append(tokens.numpy())
 
