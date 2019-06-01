@@ -19,15 +19,20 @@ import argparse
 train_data = None # MonroeData("data/csv/train_corpus_monroe.csv", "data/entries/train_entries_monroe.pkl")
 dev_data = None # MonroeData("data/csv/dev_corpus_monroe.csv", "data/entries/dev_entries_monroe.pkl")
 # write a function to do this so it takes less time to debug argparse stuff
-def load_data():
+def load_data(prefix=False):
     global train_data, dev_data
-    train_data = MonroeData("data/csv/train_corpus_monroe.csv", "data/entries/train_entries_monroe.pkl")
-    dev_data = MonroeData("data/csv/dev_corpus_monroe.csv", "data/entries/dev_entries_monroe.pkl")
+    if prefix:
+        prefix = "../"
+    else:
+        prefix = ""
+    train_data = MonroeData(prefix + "data/csv/train_corpus_monroe.csv", prefix + "data/entries/train_entries_monroe.pkl")
+    dev_data = MonroeData(prefix + "data/csv/dev_corpus_monroe.csv", prefix + "data/entries/dev_entries_monroe.pkl")
 
 
 # 1. Literal Listener
-def literal_listener_experiment(train=False, model_file="model/literal_listener_5epoch_endings_tkn.params"):
-    
+# -----------------------------------------
+def literal_listener_experiment(train=False, evaluate=True, epochs=5, embed_dim = 100, hidden_dim = 100, color_dim= 54, model_file="model/literal_listener_5epoch_endings_tkn.params"):
+        
     # Initializing featurizers
     print("Initializing featurizers")
     caption_phi = caption_featurizers.CaptionFeaturizer(tokenizer=caption_featurizers.EndingTokenizer) # Use with parameter files that end in `endings_tkn`
@@ -40,9 +45,7 @@ def literal_listener_experiment(train=False, model_file="model/literal_listener_
     train_targets = feature_handler.train_targets()
 
     print("Initializing model")
-    # model parameters
-    embed_dim = 100; hidden_dim = 100; color_dim= 54; # hard coded for example - 54 comes from color fourier phi
-    model = LiteralListener(CaptionEncoder, num_epochs=5)
+    model = LiteralListener(CaptionEncoder, num_epochs = epochs)
     model.init_model(embed_dim = embed_dim, hidden_dim = hidden_dim, vocab_size = feature_handler.caption_featurizer.caption_indexer.size,
                  color_dim = color_dim)
 
@@ -55,14 +58,17 @@ def literal_listener_experiment(train=False, model_file="model/literal_listener_
         print("Loading pretrained model")
         model.load_model(model_file)
 
-    # convert the model output to a score for that particular round
-    print("Evaluating model")
-    output_to_score = lambda model_outputs, targets: np.exp(model_outputs[np.arange(len(model_outputs)), targets]) # get the model's predicted probablity at each target index and use that as the score
-    evaluate_model(dev_data, feature_handler, model, output_to_score, score_model)
+    if evaluate:
+        # convert the model output to a score for that particular round
+        print("Evaluating model")
+        output_to_score = lambda model_outputs, targets: np.exp(model_outputs[np.arange(len(model_outputs)), targets]) # get the model's predicted probablity at each target index and use that as the score
+        evaluate_model(dev_data, feature_handler, model, output_to_score, score_model)
+    return model
 
-# 2. Literal Listener (trained with listener selections as target) 
+# 2. Literal Listener (trained with listener selections as target)
+# -----------------------------------------
 #    Everything is the same other than the target function
-def literal_listener_listener_click_experiment(train=False, model_file="model/literal_listener_listener_click_5epoch_endings_tkn.params"):
+def literal_listener_listener_click_experiment(train=False, epochs=5, embed_dim = 100, hidden_dim = 100, color_dim= 54, model_file="model/literal_listener_listener_click_5epoch_endings_tkn.params"):
     
     # Initializing featurizers
     print("Initializing featurizers")
@@ -83,9 +89,7 @@ def literal_listener_listener_click_experiment(train=False, model_file="model/li
     train_targets = feature_handler.train_targets()
 
     print("Initializing model")
-    # model parameters
-    embed_dim = 100; hidden_dim = 100; color_dim= 54; # hard coded for example - 54 comes from color fourier phi
-    model = LiteralListener(CaptionEncoder, num_epochs=5)
+    model = LiteralListener(CaptionEncoder, num_epochs = epochs)
     model.init_model(embed_dim = embed_dim, hidden_dim = hidden_dim, vocab_size = feature_handler.caption_featurizer.caption_indexer.size,
                  color_dim = color_dim)
 
@@ -98,16 +102,19 @@ def literal_listener_listener_click_experiment(train=False, model_file="model/li
         print("Loading pretrained model")
         model.load_model(model_file)
 
-    # convert the model output to a score for that particular round
-    print("Evaluating model")
-    output_to_score = lambda model_outputs, targets: np.exp(model_outputs[np.arange(len(model_outputs)), targets]) # get the model's predicted probablity at each target index and use that as the score
-    # we want to score based on the model's predictions at the TARGET indices not listener clicked indices, 
-    # so we change the feature_handler's target function to do that:
-    feature_handler.target_fn = lambda data_entry, color_perm: np.where(color_perm == data_entry.target_idx)[0]
-    evaluate_model(dev_data, feature_handler, model, output_to_score, score_model)
+    if evaluate:
+        # convert the model output to a score for that particular round
+        print("Evaluating model")
+        output_to_score = lambda model_outputs, targets: np.exp(model_outputs[np.arange(len(model_outputs)), targets]) # get the model's predicted probablity at each target index and use that as the score
+        # we want to score based on the model's predictions at the TARGET indices not listener clicked indices, 
+        # so we change the feature_handler's target function to do that:
+        feature_handler.target_fn = lambda data_entry, color_perm: np.where(color_perm == data_entry.target_idx)[0]
+        evaluate_model(dev_data, feature_handler, model, output_to_score, score_model)
+    return model
 
 # 3. Literal Speaker
-def literal_speaker_experiment(train=False, model_file="model/literal_speaker_5epoch.params"):
+# -----------------------------------------
+def literal_speaker_experiment(train=False, epochs=5, color_in_dim = 54, color_dim = 100, embed_dim = 100, hidden_dim = 100, lr = 0.004, model_file="model/literal_speaker_5epoch.params"):
     # Initializing featurizers
     print("Initializing featurizers")
     caption_phi = caption_featurizers.CaptionFeaturizer(tokenizer=caption_featurizers.WhitespaceTokenizer)  # use normal whitespace tokenizer (default)
@@ -138,11 +145,7 @@ def literal_speaker_experiment(train=False, model_file="model/literal_speaker_5e
     train_targets = feature_handler.train_targets()
 
     print("Initializing model")
-    speaker_model = LiteralSpeaker(CaptionGenerator, optimizer=torch.optim.Adam, lr=0.004, num_epochs=5)
-    color_in_dim = 54
-    color_dim = 100
-    embed_dim = 100
-    hidden_dim = 100
+    speaker_model = LiteralSpeaker(CaptionGenerator, optimizer=torch.optim.Adam, lr=lr, num_epochs=epochs)
     #lit_speaker = Speaker(color_embed_dim, caption_phi.caption_indexer.size, embed_dim, hidden_dim)
     speaker_model.init_model(color_in_dim=color_in_dim, color_dim=color_dim,
                                   vocab_size=caption_phi.caption_indexer.size, embed_dim=embed_dim,
@@ -155,8 +158,10 @@ def literal_speaker_experiment(train=False, model_file="model/literal_speaker_5e
         print("Loading pretrained model")
         speaker_model.load_model(model_file)
 
-    # do some kind of evaluation...
-    print("TODO: No evaluation currently set for speaker model.")
+    if evaluate:
+        # do some kind of evaluation...
+        print("TODO: No evaluation currently set for speaker model.")
+    return model
 
 
 
