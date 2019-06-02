@@ -132,9 +132,9 @@ class CaptionGenerator(nn.Module):
             
             
 # FOR IMAGINATIVE LISTENER
-class ColorGeneratorWithDistractorsLinear(nn.Module):
+class ColorGenerator(nn.Module):
     def __init__(self, embed_dim, hidden_dim, vocab_size, color_in_dim, color_hidden_dim, weight_matrix=None):
-        super(ColorGeneratorWithDistractorsLinear, self).__init__()
+        super(ColorGenerator, self).__init__()
         # Embedding/LSTM for words
         self.embed = nn.Embedding(vocab_size, embed_dim)
         if weight_matrix is not None:

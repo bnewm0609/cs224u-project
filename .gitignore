@@ -3,3 +3,4 @@ __pycache__
 .*.swp 
 .*.swo
 *.pyc
+data/glove.6B.100d.txt

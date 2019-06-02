@@ -30,15 +30,15 @@ def glove2dict(src_filename):
                 pass
     return data
 
-def get_pretrained_glove(dimsize=100):
+def get_pretrained_glove(words, dim=100):
     if dim != 100:
         print("Only 100 dimensional vectors supported right now")
         return None
 
-    glove100 = glove2dict("../data/glove.6B.{}d.txt".format(dimsize))
-    weight_matrix = np.empty((feature_handler.caption_featurizer.caption_indexer.size, dimsize))
-    for i, word in feature_handler.caption_featurizer.caption_indexer.idx2word.items():
-        weight_matrix[i] = glove100.get(word, np.random.normal(scale=0.6, size=(100, )))
+    glove100 = glove2dict("data/glove.6B.{}d.txt".format(dim))
+    weight_matrix = np.empty((len(words), dim))
+    for i, word in words:
+        weight_matrix[i] = glove100.get(word, np.random.normal(scale=0.6, size=(dim, )))
 
     return torch.tensor(weight_matrix)
 

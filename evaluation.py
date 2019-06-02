@@ -2,6 +2,7 @@ from scipy import stats # for pearsonr, spearmanr
 import numpy as np
 import pandas as pd # for handling test data frame
 from enum import Enum, auto # really just to try out enums
+from skimage import color
 
 
 # relevant enums for options
@@ -60,3 +61,14 @@ def score_model(test_data, scores, speaker=Speaker.BY_GAME_ID, regressor=Regress
     result = regressor(true_scores, model_scores)
     return result
     
+def delta_e_dist(color1, color2):
+    """color1 and color2 are in rgb space"""
+    # do some nice integer conversions
+    color1 = np.round(255*color1)
+    color2 = np.round(255*color2)
+    # convert colors to lab
+    color1_lab = color.rgb2lab(np.array([[color1]], dtype=np.uint8)).flatten()
+    color2_lab = color.rgb2lab(np.array([[color2]], dtype=np.uint8)).flatten()
+
+    # compute Delta E CIEDE 2000 distance
+    return color.deltaE_ciede2000(color1_lab, color2_lab)
