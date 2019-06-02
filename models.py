@@ -131,6 +131,49 @@ class CaptionGenerator(nn.Module):
         
             
             
+# FOR IMAGINATIVE LISTENER
+class ColorGeneratorWithDistractorsLinear(nn.Module):
+    def __init__(self, embed_dim, hidden_dim, vocab_size, color_in_dim, color_hidden_dim, weight_matrix=None):
+        super(ColorGeneratorWithDistractorsLinear, self).__init__()
+        # Embedding/LSTM for words
+        self.embed = nn.Embedding(vocab_size, embed_dim)
+        if weight_matrix is not None:
+            self.embed.load_state_dict({'weight': weight_matrix})
+
+        self.lstm = nn.LSTM(embed_dim, hidden_dim, bidirectional=True, batch_first=True)
+
+        # Linear layers for colors
+        #self.color_rnn = nn.RNN(color_in_dim, color_hidden_dim, bidirectional=True, batch_first=True)
+        self.color_encode = nn.Linear(2*color_in_dim, color_hidden_dim)
+
+        # now generate color from embedding dim:
+        # two linear layers to allow for some non-linear function of the hidden state elements
+        # if this leads to overfitting I'll take it out
+        self.linear1 = nn.Linear(2*hidden_dim + color_hidden_dim, hidden_dim)
+        self.linear2 = nn.Linear(hidden_dim, 3) # 3 for rgb
+
+        self.hidden_dim = hidden_dim
+        self.color_hidden_dim = color_hidden_dim
+
+    def forward(self, caption, colors):
+        # get caption encodings
+        embeddings = self.embed(caption)
+        output, _ = self.lstm(embeddings)
+
+        # get color encodings
+        colors = colors.reshape(1, 1, -1)
+        color_encodings = nn.functional.relu(self.color_encode(colors))
+        color_encodings = color_encodings.squeeze(0)
+
+        # only care about vector of last sequence
+        output = torch.cat((output[:, -1, :self.hidden_dim],
+                            output[:, 0, self.hidden_dim:]), 1)
+        # combine colors and caption
+        combined_output = torch.cat((output, color_encodings), 1)
+        output = self.linear1(combined_output)
+        output = nn.functional.relu(output)
+        output = nn.functional.softmax(self.linear2(output), dim=1)
+        return output
         
 ###########################################################
 # Wrappers for torch models to handle training/evaluating # 
@@ -159,15 +202,26 @@ class PytorchModel():
         # also make sure the model has been initialized before we do anything
         self.initialized = False
 
-    def fit(self, X, y):
+    def fit(self, X, y, validation_size = 3000):
         """
         The main sklearn-like function that takes input features X (in
         a list or array - we use color features and caption features
         for pytorch models) and targets, y, also a np array. The function
         just stores them and calls its internal train model function
         """
-        self.features = X
-        self.targets = y 
+
+        # set up validation data if necessary
+        if validation_size > 0:
+            self.features = X[:-validation_size]
+            self.targets = y[:-validation_size]
+            self.val_features= X[-validation_size:]
+            self.val_targets = y[-validation_size:]
+        else:
+            self.features = X
+            self.targets = y 
+            self.val_features = None
+            self.val_features = None
+
         self.train_model()
 
     # from https://pytorch.org/tutorials/intermediate/seq2seq_translation_tutorial.html
@@ -192,7 +246,7 @@ class PytorchModel():
         self.model = self.model(**model_params)
         self.initialized = True
 
-    def train_iter(self, caption, colors, target, optimizer, criterion):
+    def train_iter(self, caption, colors, target, criterion):
         """
         Generate predictions based on the caption and color. Caculate loss against
         the target using the criterion and optimize using the optimizer. All subclasses
@@ -226,10 +280,13 @@ class PytorchModel():
                 caption, colors = pair
                 caption = torch.tensor([caption], dtype=torch.long)
                 colors = torch.tensor([colors], dtype=torch.float)
-                target = torch.tensor([self.targets[i]]) # already turned it into a tensor in `self.fit`
+                target = torch.tensor([self.targets[i]]) 
 
 
-                loss = self.train_iter(caption, colors, target, optimizer, criterion)
+                optimizer.zero_grad()
+                loss = self.train_iter(caption, colors, target, criterion)
+                loss.backward()
+                optimizer.step()
                 stored_loss_total += loss.item()
                 print_loss_total += loss.item()
 
@@ -244,6 +301,29 @@ class PytorchModel():
                     stored_loss_avg = stored_loss_total / store_losses_every
                     self.stored_losses.append(stored_loss_avg)
                     stored_loss_total = 0
+
+            # run validation data after every epoch
+            self.validate_model(epoch, criterion)
+
+    def validate_model(self, epoch_num, criterion):
+        if self.val_features is None:
+            return
+
+        # run validation
+        total_loss = 0
+        self.model.eval()
+        with torch.no_grad():
+            for i, pair in enumerate(self.val_features):
+                caption, colors = pair
+                caption = torch.tensor([caption], dtype=torch.long)
+                colors = torch.tensor([colors], dtype=torch.float)
+                target = torch.tensor([self.val_targets[i]]) 
+                total_loss += self.train_iter(caption, colors, target, criterion).item()
+            print("="*25)
+            print("AFTER EPOCH {} - AVERAGE VALIDATION LOSS: {}".format(i, total_loss / len(self.val_features)))
+            print("="*25)
+        self.model.train()
+
 
     def load_model(self, filename):
         """
@@ -278,7 +358,7 @@ class LiteralListener(PytorchModel):
         return np.array(model_outputs)
 
 
-    def train_iter(self, caption_tensor, color_tensor, target, optimizer, criterion):
+    def train_iter(self, caption_tensor, color_tensor, target, criterion):
         """
         Iterates through a single training pair, querying the model, getting a loss and
         updating the parameters. (TODO: addd some kind of batching to this).
@@ -287,15 +367,12 @@ class LiteralListener(PytorchModel):
         """
         start_states = self.model.init_hidden_and_context()
         input_length = caption_tensor.size(0)
-        optimizer.zero_grad()
         loss = 0
 
         model_output, _, _ = self.model(caption_tensor, start_states, color_tensor)
         model_output = model_output.view(1, -1)
 
         loss += criterion(model_output, target)
-        loss.backward()
-        optimizer.step()
 
         return loss
 
@@ -361,7 +438,7 @@ class LiteralSpeaker(PytorchModel):
         return np.array(all_tokens)
 
 
-    def train_iter(self, caption_tensor, color_tensor, target, optimizer, criterion):
+    def train_iter(self, caption_tensor, color_tensor, target, criterion):
         """
         Iterates through a single training pair, querying the model, getting a loss and
         updating the parameters. (TODO: addd some kind of batching to this).
@@ -370,7 +447,6 @@ class LiteralSpeaker(PytorchModel):
         """
         # start_states = self.model.init_hidden_and_context()
         #input_length = caption_tensor.size(0)
-        optimizer.zero_grad()
         loss = 0
 
         # target color is FIRST in the tensor, so flip it so it's LAST
@@ -390,7 +466,48 @@ class LiteralSpeaker(PytorchModel):
 
         target = target.squeeze()
         loss += criterion(model_output, target)
-        loss.backward()
-        optimizer.step()
 
         return loss
+
+
+class ImaginativeListener(PytorchModel):
+    def __init__(self, model, use_color=True, **kwargs):
+        super(ImaginativeListener, self).__init__(model, **kwargs)
+        self.use_color = use_color
+
+    def train_iter(self, caption_tensor, color_tensor, target_tensor, criterion):
+        loss = 0
+
+        # not using colors at the moment
+        if self.use_color:
+            color_tensor = color_tensor[:, 1:3, :] # don't include the target at index 0
+            model_output = self.model(caption_tensor, color_tensor)
+        else:
+            model_output = self.model(caption_tensor)
+
+        if isinstance(criterion, nn.MSELoss):
+            loss += criterion(model_output, target_tensor.type(torch.FloatTensor))
+        else:
+            model_output = model_output.type(torch.DoubleTensor)
+            label = torch.tensor(1, dtype=torch.double)
+            loss += criterion(model_output, target_tensor.detach(), label)
+
+        return loss
+
+    def predict(self, X):
+        model_outputs = np.empty([len(X), 3])
+        self.model.eval()
+        with torch.no_grad():
+            for i, feature in enumerate(X):
+                caption, colors = feature
+                caption_tensor = torch.tensor([caption], dtype=torch.long)
+                color_tensor = torch.tensor([colors], dtype=torch.float)
+                if self.use_color:
+                    color_tensor = color_tensor[:, 1:3, :] # don't include the target
+                    model_output = self.model(caption_tensor, color_tensor)
+                else:
+                    model_output = self.model(caption_tensor)
+
+                model_output_np = model_output.view(-1).numpy()
+                model_outputs[i] = model_output_np
+        return np.array(model_outputs)
