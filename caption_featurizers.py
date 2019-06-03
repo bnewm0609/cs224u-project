@@ -30,12 +30,15 @@ def glove2dict(src_filename):
                 pass
     return data
 
-def get_pretrained_glove(words, dim=100):
+def get_pretrained_glove(words, dim=100, prefix=False):
     if dim != 100:
         print("Only 100 dimensional vectors supported right now")
         return None
+    data_path = "data/glove.6B.{}d.txt".format(dim)
+    if prefix:
+        data_path = "../{}".format(data_path)
 
-    glove100 = glove2dict("data/glove.6B.{}d.txt".format(dim))
+    glove100 = glove2dict(data_path)
     weight_matrix = np.empty((len(words), dim))
     for i, word in words:
         weight_matrix[i] = glove100.get(word, np.random.normal(scale=0.6, size=(dim, )))
