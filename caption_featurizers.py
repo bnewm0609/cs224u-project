@@ -4,7 +4,48 @@ import torch
 import numpy as np
 
 
+# GLOVE STUFF
+# author: Chris Potts:
+def glove2dict(src_filename):
+    """GloVe Reader.
+    Parameters
+    ----------
+    src_filename : str
+        Full path to the GloVe file to be processed.
+    Returns
+    -------
+    dict
+        Mapping words to their GloVe vectors.
+    """
+    data = {}
+    with open(src_filename) as f:
+        while True:
+            try:
+                line = next(f)
+                line = line.strip().split()
+                data[line[0]] = np.array(line[1: ], dtype=np.float)
+            except StopIteration:
+                break
+            except UnicodeDecodeError:
+                pass
+    return data
 
+def get_pretrained_glove(words, dim=100, prefix=False):
+    if dim != 100:
+        print("Only 100 dimensional vectors supported right now")
+        return None
+    data_path = "data/glove.6B.{}d.txt".format(dim)
+    if prefix:
+        data_path = "../{}".format(data_path)
+
+    glove100 = glove2dict(data_path)
+    weight_matrix = np.empty((len(words), dim))
+    for i, word in words:
+        weight_matrix[i] = glove100.get(word, np.random.normal(scale=0.6, size=(dim, )))
+
+    return torch.tensor(weight_matrix)
+
+# FEATURIZER STUFF
 class Tokenizer:
     def tokenize(self, sentence):
         pass
