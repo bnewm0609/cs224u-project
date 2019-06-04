@@ -631,7 +631,7 @@ class PragmaticListener():
         row_sum = a.sum(axis=1, keepdims=True)
         return a / row_sum
     
-    def safelog(vals):
+    def safelog(self, vals):
         with np.errstate(divide='ignore'):
             return np.log(vals)
     
@@ -642,6 +642,6 @@ class PragmaticListener():
             l0 = self.calculate_l0_log(feature, utterances)
             s1 = self.calculate_s1(l0)
             l2 = self.calculate_l2(s1)
-            model_outputs[i] = l2[0]
+            model_outputs[i] = self.safelog(l2[0])
                         
         return np.array(model_outputs)
