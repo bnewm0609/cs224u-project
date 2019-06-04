@@ -28,7 +28,7 @@ def load_data(prefix=False):
         prefix = ""
     train_data = MonroeData(prefix + "data/csv/train_corpus_monroe.csv", prefix + "data/entries/train_entries_monroe.pkl")
     dev_data = MonroeData(prefix + "data/csv/dev_corpus_monroe.csv", prefix + "data/entries/dev_entries_monroe.pkl")
-    dev_data_synth  = MonroeData(prefix + "data/csv/dev_corpus_synth_10fold.csv", "data/entries/dev_corpus_synth_10fold.pkl")
+    dev_data_synth  = MonroeData(prefix + "data/csv/dev_corpus_synth_10fold.csv", prefix + "data/entries/dev_corpus_synth_10fold.pkl")
 
 
 # 1. Literal Listener

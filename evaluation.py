@@ -9,6 +9,8 @@ from skimage import color
 class Speaker(Enum):
     BY_GAME_ID = "gameid"
     BY_WORKER_ID = "workerid_uniq"
+    BY_GAME_ID_COND = ["gameid", "condition"]
+    BY_WORKER_ID_COND = ["workerid_uniq", "condition"]
 
 class Regressor(Enum):
     PEARSON = stats.pearsonr
@@ -31,7 +33,7 @@ def calculate_scores(eval_df, speaker, score=Score.SIMPLE):
         return eval_df.groupby(speaker.value).mean()
 
 
-def score_model(test_data, scores, speaker=Speaker.BY_GAME_ID, regressor=Regressor.PEARSON, score=Score.SIMPLE):
+def score_model(test_data, scores, speaker=Speaker.BY_GAME_ID, regressor=Regressor.PEARSON, score=Score.SIMPLE, return_df=False):
     """
     Assume scores are in the same order as the test data (i.e. 0th row is 0th score) and calculates a regression
     between the scores of the individual games and the scores from the model
@@ -41,24 +43,35 @@ def score_model(test_data, scores, speaker=Speaker.BY_GAME_ID, regressor=Regress
         relevant_columns.append(Speaker.BY_WORKER_ID.value)
     
     if score == Score.COMPOSITE:
-        # no support for this yet but probably also need:
-        relevant_columns.extend(["contents", "clkTime", "msgTime"])
+        print("Got here to composite score")
+        relevant_columns.extend(["contents", "clkTime", "numCleanWords"])
+
+    if speaker == Speaker.BY_GAME_ID_COND or Speaker.BY_WORKER_ID_COND:
+        relevant_columns.append("condition")
     
     eval_df = test_data.data[relevant_columns].copy()
     eval_df["model_scores"] = scores # why we need scores to be in same order as rows
     
     
-    if score == score.SIMPLE:
+    if score == score.SIMPLE: 
         # calculate scores as the mean of the number of successful utterances
         # a speaker has
         true_scores = eval_df.groupby(speaker.value).numOutcome.mean()
-    else:
-        true_scores = calculate_scores(eval_df, score)
+    elif score == score.COMPOSITE:
+        mean_scores = eval_df.groupby(speaker.value).numOutcome.mean()
+        mean_numCleanWords = eval_df.groupby(speaker.value).numCleanWords.mean()
+        mean_clkTime = eval_df.groupby(speaker.value).clkTime.mean()
+        true_scores = mean_scores / mean_clkTime / mean_numCleanWords
+        max_score = true_scores.max()
+        true_scores /= max_score # normalize the scores
     
     # calculate a model score 
     model_scores = eval_df.groupby(speaker.value).model_scores.mean()
     
     result = regressor(true_scores, model_scores)
+    if return_df:
+        result = (result, eval_df)
+
     return result
     
 def delta_e_dist(color1, color2):
