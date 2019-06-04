@@ -391,6 +391,99 @@ class LiteralListener(PytorchModel):
             return model_output
 
 
+# Replaced by the implementation below that can sample > 1
+
+# class LiteralSpeaker(PytorchModel):
+    
+#     def __init__(self, model, max_gen_len=20, **kwargs):
+#         super(LiteralSpeaker, self).__init__(model, **kwargs)
+#         self.max_gen_len = max_gen_len
+        
+#     def predict(self, X, sample=1):
+#         """
+#         There are a bunch of choices for what we might want to do here:
+#         1. X contains just color contexts and we incrementatlly sample 
+#            using beam search to generate a caption and return that.
+#         2. X contains color contexts and captions and we return the
+#            softmax probabilities assigned to each token in the caption
+#            (for calculating perplexity or some notion of how probable
+#            our model believes the caption is given the color context)
+
+#         Right now 1 is implemented, but I think 2 is better in the long
+#         run. We are greedily taking the most likely token
+#         """
+#         # Create a tensor with just the starting token
+#         all_tokens = []
+#         max_gen_len = 20
+
+#         self.model.eval()
+#         with torch.no_grad():
+#             for i, feature in enumerate(X):
+#                 caption, colors = feature
+#                 caption = torch.tensor([caption], dtype=torch.long)
+#                 colors = torch.tensor([colors], dtype=torch.float)
+#                 colors = np.flip(colors.numpy(), axis=1).copy()
+#                 colors = torch.from_numpy(colors)
+#                 tokens = caption[:, 0].view(-1, 1)
+#                 for i in range(max_gen_len):
+#                     vocab_preds = self.model(colors, tokens)[:,-1:,:] # just distribution over last token
+#                     _, prediction_index = vocab_preds.max(2)  # taking the max over the innermost (2nd) axis
+#                     tokens = torch.cat((tokens, prediction_index), dim=1)
+#                     if prediction_index.item() == caption[:, -1].view(-1, 1):
+#                         break
+#                 all_tokens.append(tokens.numpy())
+
+#         return all_tokens
+
+
+#     def train_iter(self, caption_tensor, color_tensor, target, criterion):
+#         """
+#         Iterates through a single training pair, querying the model, getting a loss and
+#         updating the parameters. (TODO: addd some kind of batching to this).
+
+#         Very much inspired by the torch NMT example/tutorial thingy
+#         """
+#         # start_states = self.model.init_hidden_and_context()
+#         #input_length = caption_tensor.size(0)
+#         loss = 0
+
+#         # target color is FIRST in the tensor, so flip it so it's LAST
+#         color_tensor = np.flip(color_tensor.numpy(), axis=1).copy()
+#         color_tensor = torch.from_numpy(color_tensor);
+#         # color_features = color_encoder(color_tensor)
+#         model_output = self.model(color_tensor, caption_tensor)
+
+#         # we don't care about the last prediction, because nothing follows the final </s> token
+#         model_output = model_output[:,:-1,:].squeeze(0) # go from 1 x seq_len x vocab_size => seq_len x vocab_size
+#                                                         # for calculating loss function:
+#                                                         # see here for details when implementing batching
+#                                                         # https://discuss.pytorch.org/t/calculating-loss-for-entire-batch-using-nllloss-in-0-4-0/17142/7
+
+#         # targets should be caption without start index: i.e. [the blue one </s>] so we can predict
+#         # next tokens from input like [<s> the blue one]
+
+#         target = target.squeeze()
+#         loss += criterion(model_output, target)
+
+#         return loss
+
+
+from queue import PriorityQueue
+
+class BeamNode():
+    def __init__(self, log_prob, tokens, ended):
+        self.log_prob = log_prob
+        self.tokens = tokens
+        self.ended = ended
+    
+    def score(self):
+        return -self.log_prob
+    
+    def __eq__(self, other):
+        return self.score() == other.score()
+
+    def __lt__(self, other):
+        return self.score() < other.score()
 
 class LiteralSpeaker(PytorchModel):
     
@@ -398,7 +491,7 @@ class LiteralSpeaker(PytorchModel):
         super(LiteralSpeaker, self).__init__(model, **kwargs)
         self.max_gen_len = max_gen_len
         
-    def predict(self, X):
+    def predict(self, X, sample=1, beam_width=5):
         """
         There are a bunch of choices for what we might want to do here:
         1. X contains just color contexts and we incrementatlly sample 
@@ -423,49 +516,38 @@ class LiteralSpeaker(PytorchModel):
                 colors = torch.tensor([colors], dtype=torch.float)
                 colors = np.flip(colors.numpy(), axis=1).copy()
                 colors = torch.from_numpy(colors)
-                tokens = caption[:, 0].view(-1, 1)
-                for i in range(max_gen_len):
-                    vocab_preds = self.model(colors, tokens)[:,-1:,:] # just distribution over last token
-                    _, prediction_index = vocab_preds.max(2)  # taking the max over the innermost (2nd) axis
-                    tokens = torch.cat((tokens, prediction_index), dim=1)
-                    if prediction_index.item() == caption[:, -1].view(-1, 1):
-                        break
-                all_tokens.append(tokens.numpy())
-
+                
+                beam_nodes = PriorityQueue()
+                ended_list = []
+                
+                tokens = caption[:, 0].view(-1, 1) # begin at start token
+                start = BeamNode(0, tokens, False)
+                beam_nodes.put(start)
+                
+                for i in range(max_gen_len + 1):
+                    node = beam_nodes.get()
+                    if node.ended:
+                        ended_list.append(np.array(node.tokens[0].numpy()))
+                        if len(ended_list) == sample:
+                            break
+                    else:
+                        tokens = node.tokens
+                        vocab_preds = self.model(colors, tokens)[:,-1:,:] # just distribution over last token
+                        log_probs, prediction_indices = vocab_preds.topk(beam_width, dim=2)  # taking the topk predictions
+                        for j in range(beam_width):
+                            prediction_index = prediction_indices[:,-1,j:j+1] # a single prediction
+                            log_prob = log_probs[0][0][j].item()
+                            updated_tokens = tokens.clone()
+                            updated_tokens = torch.cat((updated_tokens, prediction_index), dim=1)
+                            updated_log_prob = node.log_prob + log_prob
+                            ended = ((i == max_gen_len - 1) or (prediction_index.item() == caption[:, -1].view(-1, 1)))
+                            new_node = BeamNode(updated_log_prob, updated_tokens, ended)
+                            beam_nodes.put(new_node)
+                if sample == 1: # for backwards compatability
+                    all_tokens.append(np.array(ended_list))
+                else:
+                    all_tokens.append(ended_list)
         return all_tokens
-
-
-    def train_iter(self, caption_tensor, color_tensor, target, criterion):
-        """
-        Iterates through a single training pair, querying the model, getting a loss and
-        updating the parameters. (TODO: addd some kind of batching to this).
-
-        Very much inspired by the torch NMT example/tutorial thingy
-        """
-        # start_states = self.model.init_hidden_and_context()
-        #input_length = caption_tensor.size(0)
-        loss = 0
-
-        # target color is FIRST in the tensor, so flip it so it's LAST
-        color_tensor = np.flip(color_tensor.numpy(), axis=1).copy()
-        color_tensor = torch.from_numpy(color_tensor);
-        # color_features = color_encoder(color_tensor)
-        model_output = self.model(color_tensor, caption_tensor)
-
-        # we don't care about the last prediction, because nothing follows the final </s> token
-        model_output = model_output[:,:-1,:].squeeze(0) # go from 1 x seq_len x vocab_size => seq_len x vocab_size
-                                                        # for calculating loss function:
-                                                        # see here for details when implementing batching
-                                                        # https://discuss.pytorch.org/t/calculating-loss-for-entire-batch-using-nllloss-in-0-4-0/17142/7
-
-        # targets should be caption without start index: i.e. [the blue one </s>] so we can predict
-        # next tokens from input like [<s> the blue one]
-
-        target = target.squeeze()
-        loss += criterion(model_output, target)
-
-        return loss
-
 
 class ImaginativeListener(PytorchModel):
     def __init__(self, model, use_color=True, **kwargs):
@@ -507,4 +589,59 @@ class ImaginativeListener(PytorchModel):
 
                 model_output_np = model_output.view(-1).numpy()
                 model_outputs[i] = model_output_np
+        return np.array(model_outputs)
+    
+    
+class PragmaticListener():
+    def __init__(self, literal_listener, literal_speaker, alpha=0.544, sample=5, beam_width=5):
+        self.literal_listener = literal_listener
+        self.literal_speaker = literal_speaker
+        self.alpha = alpha
+        self.sample = sample
+        self.beam_width = beam_width
+        self.prior = 1/3. # uniform prior over colors
+    
+    def get_utterance_universe(self, feature):
+        # sample from literal speaker model
+        caption, colors = feature
+        U = self.literal_speaker.predict([feature], sample=self.sample, beam_width=self.beam_width)[0]
+        U = [caption] + U
+        return U
+    
+    def calculate_l0_log(self, feature, utterances):
+        _, colors = feature
+        feature_modified = []
+        for u in utterances:
+            feature_modified.append([u, colors])
+        return self.literal_listener.predict(feature_modified)
+    
+    def calculate_s1(self, l0):
+        s1 = l0.T * self.alpha
+        # could subtract costs here
+        s1 = np.exp(s1)
+        s1 = self.row_norm(s1)
+        return s1
+    
+    def calculate_l2(self, s1):
+        l2 = s1.T * self.prior
+        l2 = self.row_norm(l2)
+        return l2
+            
+    def row_norm(self, a):
+        row_sum = a.sum(axis=1, keepdims=True)
+        return a / row_sum
+    
+    def safelog(self, vals):
+        with np.errstate(divide='ignore'):
+            return np.log(vals)
+    
+    def predict(self, X):
+        model_outputs = np.empty([len(X), 3])
+        for i, feature in enumerate(X): 
+            utterances = self.get_utterance_universe(feature)            
+            l0 = self.calculate_l0_log(feature, utterances)
+            s1 = self.calculate_s1(l0)
+            l2 = self.calculate_l2(s1)
+            model_outputs[i] = self.safelog(l2[0])
+                        
         return np.array(model_outputs)

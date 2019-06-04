@@ -119,7 +119,7 @@ def literal_listener_listener_click_experiment(train=False, evaluate=True, epoch
 def literal_speaker_experiment(train=False, evaluate=True, epochs=5, color_in_dim = 54, color_dim = 100, embed_dim = 100, hidden_dim = 100, lr = 0.004, model_file="model/literal_speaker_5epoch.params"):
     # Initializing featurizers
     print("Initializing featurizers")
-    caption_phi = caption_featurizers.CaptionFeaturizer(tokenizer=caption_featurizers.WhitespaceTokenizer)  # use normal whitespace tokenizer (default)
+    caption_phi = caption_featurizers.CaptionFeaturizer(tokenizer=caption_featurizers.EndingTokenizer)  # we'll use the EndingTokenizer in order to have common training data, but should technically be WhitespaceTokenizer
 
     color_phi = ColorFeaturizer(color_phi_fourier, "hsv", normalized=True) # speaker uses hsv 
     
