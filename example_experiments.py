@@ -219,7 +219,7 @@ if __name__ == "__main__":
     if args.model_file is None:
         experiment_func() # don't retrain and save over the default model
     else:
-        experiment_func(args.retrain, args.model_file)
+        experiment_func(train = args.retrain, model_file = args.model_file)
 
 
 

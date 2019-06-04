@@ -13,7 +13,7 @@ import math
 # FOR LISTENER
 class CaptionEncoder(nn.Module):
     
-    def __init__(self, embed_dim, hidden_dim, vocab_size, color_dim, **misc_params):
+    def __init__(self, embed_dim, hidden_dim, vocab_size, color_dim, weight_matrix=None):
         """
         embed_dim = hidden_dim = 100
         color_dim = 54 if using color_phi_fourier (with resolution 3)
@@ -22,6 +22,8 @@ class CaptionEncoder(nn.Module):
         """
         super(CaptionEncoder, self).__init__()
         self.embed = nn.Embedding(vocab_size, embed_dim)
+        if weight_matrix is not None:
+            self.embed.load_state_dict({'weight': weight_matrix})
         
         # Various notes based on Will Monroe's code
         # should initialize bias to 0: https://github.com/futurulus/colors-in-context/blob/2e7b830668cd039830154e7e8f211c6d4415d30f/listener.py#L383
@@ -491,6 +493,37 @@ class LiteralSpeaker(PytorchModel):
         super(LiteralSpeaker, self).__init__(model, **kwargs)
         self.max_gen_len = max_gen_len
         
+    def train_iter(self, caption_tensor, color_tensor, target, criterion):
+        """
+        Iterates through a single training pair, querying the model, getting a loss and
+        updating the parameters. (TODO: addd some kind of batching to this).
+
+        Very much inspired by the torch NMT example/tutorial thingy
+        """
+        # start_states = self.model.init_hidden_and_context()
+        #input_length = caption_tensor.size(0)
+        loss = 0
+
+        # target color is FIRST in the tensor, so flip it so it's LAST
+        color_tensor = np.flip(color_tensor.numpy(), axis=1).copy()
+        color_tensor = torch.from_numpy(color_tensor);
+        # color_features = color_encoder(color_tensor)
+        model_output = self.model(color_tensor, caption_tensor)
+
+        # we don't care about the last prediction, because nothing follows the final </s> token
+        model_output = model_output[:,:-1,:].squeeze(0) # go from 1 x seq_len x vocab_size => seq_len x vocab_size
+                                                        # for calculating loss function:
+                                                        # see here for details when implementing batching
+                                                        # https://discuss.pytorch.org/t/calculating-loss-for-entire-batch-using-nllloss-in-0-4-0/17142/7
+
+        # targets should be caption without start index: i.e. [the blue one </s>] so we can predict
+        # next tokens from input like [<s> the blue one]
+
+        target = target.squeeze()
+        loss += criterion(model_output, target)
+
+        return loss
+
     def predict(self, X, sample=1, beam_width=5):
         """
         There are a bunch of choices for what we might want to do here:
