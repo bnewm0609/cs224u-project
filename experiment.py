@@ -22,8 +22,11 @@ import math
     #     model.load_model(pretrained_file)
 
 def evaluate_model(assess_data, feature_handler, model, predictions_to_scores, model_scorer,
-                    model_scorer_kwargs={}, accuracy=True):
+                    feature_handler_2=None, model_scorer_kwargs={}, accuracy=True):
     assess_features = feature_handler.test_features() # ~6 sec
+    if feature_handler_2 != None:
+        assess_features_2 = feature_handler_2.test_features()
+        assess_features = list(zip(assess_features, assess_features_2))
     assess_targets = feature_handler.test_targets()
     model_outputs =  model.predict(assess_features)
     model_scores = predictions_to_scores(model_outputs, assess_targets) # decide what the score we're going to use is
@@ -63,7 +66,7 @@ class FeatureHandler:
         color_phi   - color feature function (type: ColorFeaturizer)
         extra_featurizers - list any other feature functions to include. Each should have a `to_features`
                             method that takes a MonroeDataEntry to a feature
-        target_fn - function for mapping MonroeDataentry (and permuation if randomized_colors is true)
+        target_fn - function for mapping MonroeDataEntry (and permuation if randomized_colors is true)
                     to a *single value*
         randomized_colors - True if color order should be randomized, False if should be fixed with target first.
 

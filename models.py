@@ -492,7 +492,7 @@ class LiteralSpeaker(PytorchModel):
     def __init__(self, model, max_gen_len=20, **kwargs):
         super(LiteralSpeaker, self).__init__(model, **kwargs)
         self.max_gen_len = max_gen_len
-        
+
     def train_iter(self, caption_tensor, color_tensor, target, criterion):
         """
         Iterates through a single training pair, querying the model, getting a loss and
@@ -523,7 +523,7 @@ class LiteralSpeaker(PytorchModel):
         loss += criterion(model_output, target)
 
         return loss
-
+        
     def predict(self, X, sample=1, beam_width=5):
         """
         There are a bunch of choices for what we might want to do here:
@@ -544,42 +544,46 @@ class LiteralSpeaker(PytorchModel):
         self.model.eval()
         with torch.no_grad():
             for i, feature in enumerate(X):
-                caption, colors = feature
+                caption, colors_before_roll = feature
                 caption = torch.tensor([caption], dtype=torch.long)
-                colors = torch.tensor([colors], dtype=torch.float)
-                colors = np.flip(colors.numpy(), axis=1).copy()
-                colors = torch.from_numpy(colors)
+                predictions_all_targets =  []
+                for r in range(len(colors_before_roll)): # Roll through the different possible targets being last
+                    colors = np.roll(colors_before_roll, shift=r, axis=0)
+                    colors = torch.tensor([colors], dtype=torch.float)
+                    colors = np.flip(colors.numpy(), axis=1).copy()
+                    colors = torch.from_numpy(colors)
+
+                    beam_nodes = PriorityQueue()
+                    ended_list = []
+
+                    tokens = caption[:, 0].view(-1, 1) # begin at start token
+                    start = BeamNode(0, tokens, False)
+                    beam_nodes.put(start)
                 
-                beam_nodes = PriorityQueue()
-                ended_list = []
-                
-                tokens = caption[:, 0].view(-1, 1) # begin at start token
-                start = BeamNode(0, tokens, False)
-                beam_nodes.put(start)
-                
-                for i in range(max_gen_len + 1):
-                    node = beam_nodes.get()
-                    if node.ended:
-                        ended_list.append(np.array(node.tokens[0].numpy()))
-                        if len(ended_list) == sample:
-                            break
-                    else:
-                        tokens = node.tokens
-                        vocab_preds = self.model(colors, tokens)[:,-1:,:] # just distribution over last token
-                        log_probs, prediction_indices = vocab_preds.topk(beam_width, dim=2)  # taking the topk predictions
-                        for j in range(beam_width):
-                            prediction_index = prediction_indices[:,-1,j:j+1] # a single prediction
-                            log_prob = log_probs[0][0][j].item()
-                            updated_tokens = tokens.clone()
-                            updated_tokens = torch.cat((updated_tokens, prediction_index), dim=1)
-                            updated_log_prob = node.log_prob + log_prob
-                            ended = ((i == max_gen_len - 1) or (prediction_index.item() == caption[:, -1].view(-1, 1)))
-                            new_node = BeamNode(updated_log_prob, updated_tokens, ended)
-                            beam_nodes.put(new_node)
+                    for i in range(max_gen_len + 1):
+                        node = beam_nodes.get()
+                        if node.ended:
+                            ended_list.append(np.array(node.tokens[0].numpy()))
+                            if len(ended_list) == sample:
+                                break
+                        else:
+                            tokens = node.tokens
+                            vocab_preds = self.model(colors, tokens)[:,-1:,:] # just distribution over last token
+                            log_probs, prediction_indices = vocab_preds.topk(beam_width, dim=2)  # taking the topk predictions
+                            for j in range(beam_width):
+                                prediction_index = prediction_indices[:,-1,j:j+1] # a single prediction
+                                log_prob = log_probs[0][0][j].item()
+                                updated_tokens = tokens.clone()
+                                updated_tokens = torch.cat((updated_tokens, prediction_index), dim=1)
+                                updated_log_prob = node.log_prob + log_prob
+                                ended = ((i == max_gen_len - 1) or (prediction_index.item() == caption[:, -1].view(-1, 1)))
+                                new_node = BeamNode(updated_log_prob, updated_tokens, ended)
+                                beam_nodes.put(new_node)
+                    predictions_all_targets += ended_list
                 if sample == 1: # for backwards compatability
-                    all_tokens.append(np.array(ended_list))
+                    all_tokens.append(np.array(predictions_all_targets))
                 else:
-                    all_tokens.append(ended_list)
+                    all_tokens.append(predictions_all_targets)
         return all_tokens
 
 class ImaginativeListener(PytorchModel):
@@ -636,7 +640,7 @@ class PragmaticListener():
     
     def get_utterance_universe(self, feature):
         # sample from literal speaker model
-        caption, colors = feature
+        caption, _ = feature
         U = self.literal_speaker.predict([feature], sample=self.sample, beam_width=self.beam_width)[0]
         U = [caption] + U
         return U
@@ -670,9 +674,13 @@ class PragmaticListener():
     
     def predict(self, X):
         model_outputs = np.empty([len(X), 3])
-        for i, feature in enumerate(X): 
-            utterances = self.get_utterance_universe(feature)            
-            l0 = self.calculate_l0_log(feature, utterances)
+        for i, feature_concat in enumerate(X): 
+            if len(feature_concat) != 2:
+                print("Pragmatic listener requires both literal listener and literal speaker features")
+                return
+            feature_listener, feature_speaker = feature_concat
+            utterances = self.get_utterance_universe(feature_speaker)            
+            l0 = self.calculate_l0_log(feature_listener, utterances)
             s1 = self.calculate_s1(l0)
             l2 = self.calculate_l2(s1)
             model_outputs[i] = self.safelog(l2[0])
