@@ -143,8 +143,14 @@ def generate_synth_entries(monroe_df):
 
 
 if __name__ == "__main__":
-    dev_data = MonroeData("data/csv/dev_corpus_monroe.csv", "data/entries/dev_entries_monroe.pkl")
+    # dev_data = MonroeData("data/csv/dev_corpus_monroe.csv", "data/entries/dev_entries_monroe.pkl")
+    print("Initializing test data")
+    test_data = MonroeData("data/csv/test_corpus_monroe.csv")
+    for _ in test_data.read_data():
+        pass
+    test_data.save_entries("data/entries/test_entries_monroe.pkl")
+    
     print("Obtaining Synthetic Entries")
-    dev_data_synth_fake_entries, dev_data_synth_correct_entries = generate_synth_entries(dev_data)
+    test_data_synth_fake_entries, test_data_synth_correct_entries = generate_synth_entries(test_data)
     print("Packaging Synthetic Entries into CSV/pkl files")
-    train_data_synth_10 = create_synth_data(dev_data, dev_data_synth_fake_entries, dev_data_synth_correct_entries, num_divisions=10, filename = "dev_corpus_synth_10fold")
+    test_data_synth_10 = create_synth_data(test_data, test_data_synth_fake_entries, test_data_synth_correct_entries, num_divisions=10, filename = "test_corpus_synth_10fold")
