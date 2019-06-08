@@ -222,7 +222,7 @@ class PytorchModel():
             self.features = X
             self.targets = y 
             self.val_features = None
-            self.val_features = None
+            self.val_targets = None
 
         self.train_model()
 
