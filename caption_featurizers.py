@@ -51,6 +51,9 @@ class Tokenizer:
         pass
 
 class WhitespaceTokenizer(Tokenizer):
+    """
+    Separates tokens based only on whitespace
+    """
     def tokenize(self, sentence):
         return nltk.word_tokenize(sentence)
     
@@ -76,6 +79,13 @@ class EndingTokenizer(Tokenizer):
             if not inserted:
                 tokens.append(word)
         return tokens
+
+class CharacterTokenizer(Tokenizer):
+    """
+    Treats each character as a separate token
+    """
+    def tokenize(self, sentence):
+        return list(sentence)
 
 
 class CaptionIndexer:

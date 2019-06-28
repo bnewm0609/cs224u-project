@@ -193,6 +193,37 @@ class ColorSelector(nn.Module):
         output = self.nll(output)
         return output        
 
+# FOR Character-LSTM Speaker for Single Color
+class CharacterCaptionGenerator(nn.Module):
+
+    def __init__(self, color_in_dim, color_dim, vocab_size, embed_dim, speaker_hidden_dim):
+        super(CharacterCaptionGenerator, self).__init__()
+
+        # for colors
+        self.color_encoder = nn.Linear(color_in_dim, color_dim)
+
+        # for text
+        self.embed = nn.Embedding(vocab_size, embed_dim)
+
+        self.speaker_lstm = nn.LSTM(embed_dim + color_dim, speaker_hidden_dim, batch_first=True)
+        self.linear = nn.Linear(speaker_hidden_dim, vocab_size)
+        self.logsoftmax = nn.LogSoftmax(dim=2)
+
+    def forward(self, color, captions):
+        color_features = self.color_encoder(color)
+        caption_features = self.embed(captions)
+
+        # concatenate color features to the embedding of each token
+        color_features = color_features.repeat(1, captions.shape[1], 1) # repeat for number of tokens
+        inputs = torch.cat((caption_features, color_features), dim=2) # concatenate along the innermost dimension
+
+        # just use teacher forcing here for now (i.e. don't feed predictions back into network some percentage of the time
+        #). Not doing this leads to greater instability but is cleaner to implement
+        hiddens, _ = self.speaker_lstm(inputs)
+        outputs = self.linear(hiddens)
+        output_norm = self.logsoftmax(outputs)
+        return output_norm
+
 
 ###########################################################
 # Wrappers for torch models to handle training/evaluating # 
@@ -517,14 +548,11 @@ class LiteralSpeaker(PytorchModel):
 
         Very much inspired by the torch NMT example/tutorial thingy
         """
-        # start_states = self.model.init_hidden_and_context()
-        #input_length = caption_tensor.size(0)
         loss = 0
 
         # target color is FIRST in the tensor, so flip it so it's LAST
         color_tensor = np.flip(color_tensor.numpy(), axis=1).copy()
         color_tensor = torch.from_numpy(color_tensor);
-        # color_features = color_encoder(color_tensor)
         model_output = self.model(color_tensor, caption_tensor)
 
         # we don't care about the last prediction, because nothing follows the final </s> token
@@ -556,7 +584,7 @@ class LiteralSpeaker(PytorchModel):
         """
         # Create a tensor with just the starting token
         all_tokens = []
-        max_gen_len = 20
+        max_gen_len = self.max_gen_len
 
         self.model.eval()
         with torch.no_grad():

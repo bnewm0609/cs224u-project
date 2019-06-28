@@ -260,8 +260,6 @@ def literal_speaker_scorer(train=False, model_file="model/literal_speaker_30epoc
             for j, prediction in enumerate(predictions):
                 scores[j] = np.sum(prediction[np.arange(len(targets[i])), targets[i]].numpy())
             all_scores.append(scores)
-        print(all_scores[:10])
-        print(np.argmax(all_scores, axis=1)[:10])
         return np.argmax(np.array(all_scores), axis=1) == 0 # all the targets are at index 0
 
 
@@ -277,15 +275,13 @@ def literal_speaker_scorer(train=False, model_file="model/literal_speaker_30epoc
             for j, prediction in enumerate(predictions):
                 scores[j] = np.sum(prediction[np.arange(len(targets[i])), targets[i]].numpy()) # markov assumption to sum log probabilities of words
             # softmax scores
-            if np.sum(np.exp(scores)) == 0:
-                print(scores)
-            else:
-                scores = np.exp(scores) / np.sum(np.exp(scores))
-                # take the portion of the distribution asssigned to target (@ index 0)
-                all_scores.append(scores[0])
+            scores = np.exp(scores) / np.sum(np.exp(scores))
+            # take the portion of the distribution asssigned to target (@ index 0)
+            all_scores.append(scores[0])
         return all_scores
 
-    evaluate_model(dev_data_synth, feature_handler, lss_model, output_to_score_lss, score_model)
+    result = evaluate_model(dev_data_synth, feature_handler, lss_model, output_to_score_lss, score_model, accuracy=False)
+    print(result)
 
 
 

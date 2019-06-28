@@ -283,6 +283,7 @@ class MonroeDataEntry():
     
     def __repr__(self):
         return self.caption
+
 class Color():
     """
     Class used for storing various color formats that are used in the experiment data (HSL),
@@ -294,9 +295,13 @@ class Color():
             self.hsl = [coordinate_1, coordinate_2, coordinate_3]
             self.rgb = self.hsl_to_rgb(self.hsl)
             
-        if space.lower() == "rgb":
+        elif space.lower() == "rgb":
             self.rgb = [coordinate_1, coordinate_2, coordinate_3]
             self.hsl = self.rgb_to_hsl(self.rgb)
+
+        else:
+            print("Unknown color space: {}. Please use HSL or RGB.".format(space))
+            return
         
         self.hsv = self.hsl_to_hsv(self.hsl)
         
