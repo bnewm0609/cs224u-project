@@ -176,7 +176,24 @@ class ColorGenerator(nn.Module):
         output = nn.functional.relu(output)
         output = nn.functional.softmax(self.linear2(output), dim=1)
         return output
-        
+
+# FOR COLOR-ONLY BASELINE
+class ColorSelector(nn.Module):
+    def __init__(self, color_dim):
+        super(ColorSelector, self).__init__()
+        self.linear1 = nn.Linear(3*color_dim, color_dim)
+        self.linear2 = nn.Linear(color_dim, 3)
+        self.nll = nn.LogSoftmax(dim=2)
+    
+    def forward(self, colors):
+        colors = colors.reshape(1, 1, -1)
+        output = self.linear1(colors)
+        output = nn.functional.relu(output)
+        output = self.linear2(output)
+        output = self.nll(output)
+        return output        
+
+
 ###########################################################
 # Wrappers for torch models to handle training/evaluating # 
 ###########################################################
@@ -586,6 +603,35 @@ class LiteralSpeaker(PytorchModel):
                     all_tokens.append(predictions_all_targets)
         return all_tokens
 
+class LiteralSpeakerScorer(LiteralSpeaker):
+    """
+    Only difference between this and above Literal Speaker is the predict function. Above we care about generating the next tokens with beam
+    search but here we want to use the model to get the log probability of the paseed feature
+    """
+
+    def predict(self, X):
+        self.model.eval()
+        with torch.no_grad():
+            all_color_outputs = []
+            for i, feature in enumerate(X):
+                caption, colors_before_roll = feature
+                caption_tensor = torch.tensor([caption])
+                
+                each_color_outputs = []
+                for r in range(len(colors_before_roll)):
+                    # we want to get probability that each color is target
+                    colors = np.roll(colors_before_roll, shift=r, axis=0)
+                    # flip colors so target is last - consistent with target being last
+                    colors = np.flip(colors, axis=0).copy()
+                    #print(colors)
+                    color_tensor = torch.tensor([colors])
+
+                    results = self.model(color_tensor, caption_tensor)
+                    each_color_outputs.append(results.squeeze()[:-1])
+                
+                all_color_outputs.append(each_color_outputs)
+            return all_color_outputs
+
 class ImaginativeListener(PytorchModel):
     def __init__(self, model, use_color=True, **kwargs):
         super(ImaginativeListener, self).__init__(model, **kwargs)
@@ -686,3 +732,26 @@ class PragmaticListener():
             model_outputs[i] = self.safelog(l2[0])
                         
         return np.array(model_outputs)
+
+
+class ColorOnlyBaseline(PytorchModel):
+    
+    def train_iter(self, caption_tensor, color_tensor, target_tensor, criterion):
+        model_output = self.model(color_tensor)
+        loss = criterion(model_output.view(1, -1), target_tensor)
+        return loss
+        
+    
+    def predict(self, X):
+        model_outputs = np.empty([len(X), 3])
+        self.model.eval()
+        with torch.no_grad():
+            for i, feature in enumerate(X):
+                caption, colors = feature
+                color_tensor = torch.tensor([colors], dtype=torch.float)
+                model_output = self.model(color_tensor)
+                            
+                model_output_np = model_output.view(-1).numpy()
+                model_outputs[i] = model_output_np
+        return model_outputs
+                

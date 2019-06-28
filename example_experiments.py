@@ -4,7 +4,7 @@ import numpy as np
 from monroe_data import MonroeData, MonroeDataEntry, Color # last two for reading pkl file
 import caption_featurizers 
 from color_featurizers import ColorFeaturizer, color_phi_fourier
-from models import LiteralListener, LiteralSpeaker, ImaginativeListener, CaptionEncoder, CaptionGenerator, ColorGenerator
+from models import LiteralListener, LiteralSpeaker, ImaginativeListener, CaptionEncoder, CaptionGenerator, ColorGenerator, ColorSelector, ColorOnlyBaseline, LiteralSpeakerScorer
 from evaluation import score_model, delta_e_dist
 from experiment import FeatureHandler, evaluate_model
 import argparse
@@ -116,7 +116,7 @@ def literal_listener_listener_click_experiment(train=False, evaluate=True, epoch
 
 # 3. Literal Speaker
 # -----------------------------------------
-def literal_speaker_experiment(train=False, evaluate=True, epochs=5, color_in_dim = 54, color_dim = 100, embed_dim = 100, hidden_dim = 100, lr = 0.004, model_file="model/literal_speaker_5epoch.params"):
+def literal_speaker_experiment(train=False, evaluate=True, epochs=5, color_in_dim = 54, color_dim = 100, embed_dim = 100, hidden_dim = 100, lr = 0.004, model_file="model/literal_speaker_30epochGLOVE.params"):
     # Initializing featurizers
     print("Initializing featurizers")
     caption_phi = caption_featurizers.CaptionFeaturizer(tokenizer=caption_featurizers.EndingTokenizer)  # we'll use the EndingTokenizer in order to have common training data, but should technically be WhitespaceTokenizer
@@ -195,10 +195,105 @@ def imaginative_listener(train=False, model_file="model/imaginative_listener_wit
     evaluate_model(dev_data_synth, feature_handler, imaginative_model, output_to_score_de, score_model, accuracy=False)
 
 
+#5. Color-Only Baseline
+def color_only_baseline(train=False, model_file="model/baseline_model.params"):
+    caption_phi = caption_featurizers.CaptionFeaturizer(tokenizer=caption_featurizers.EndingTokenizer) # Use with parameter files that end in `endings_tkn` - using endings tokenizer to separate endings like "ish" and "er"
+    color_phi = ColorFeaturizer(color_phi_fourier, "rgb", normalized=True)
+    feature_handler = FeatureHandler(train_data, dev_data_synth, caption_phi, color_phi)
+    train_features = feature_handler.train_features()
+    train_targets = feature_handler.train_targets()
+
+    baseline_model = ColorOnlyBaseline(ColorSelector, optimizer=torch.optim.Adam, lr=0.001, num_epochs=5)
+    baseline_model.init_model(color_dim=54)
+
+    if train:
+        print("Training model and saving to {}.".format(model_file))
+        baseline_model.fit(train_features, train_targets)
+        baseline_model.save_model(model_file)
+    else:
+        print("Loading pretrained model")
+        baseline_model.load_model(model_file)
+
+    print("Evaluating model")
+    output_to_score = lambda model_outputs, targets: np.exp(model_outputs[np.arange(len(model_outputs)), targets]) # get the model's predicted probablity at each target index and use that as the score
+    evaluate_model(dev_data_synth, feature_handler, baseline_model, output_to_score, score_model)
+
+# 6. Rebuen & Will's LM scorer
+def literal_speaker_scorer(train=False, model_file="model/literal_speaker_30epochGLOVE.params"):
+    caption_phi = caption_featurizers.CaptionFeaturizer(tokenizer=caption_featurizers.EndingTokenizer) 
+    color_phi = ColorFeaturizer(color_phi_fourier, "hsv", normalized=True) # speaker uses hsv
+
+    # speaker's target is to predict tokens following the SOS token
+    def speaker_target(data_entry):
+        _, caption_ids = caption_phi.to_string_features(data_entry.caption) # this probably works...
+        target = caption_ids[1:]
+        return target
+
+    feature_handler = FeatureHandler(train_data, dev_data_synth, caption_phi, color_phi, target_fn=speaker_target, randomized_colors=False)
+
+    if train:
+        print("Obtaining training features")
+        train_features = feature_handler.train_features()
+        train_targets = feature_handler.train_targets()
+
+
+    lss_model = LiteralSpeakerScorer(CaptionGenerator)
+    lss_model.init_model(color_in_dim=54, color_dim=100,
+                                  vocab_size=caption_phi.caption_indexer.size, embed_dim=100,
+                                 speaker_hidden_dim=100)
+
+    if train:
+        pass
+    else:
+        lss_model.load_model(model_file)
+
+    # unused, but here for reference
+    def output_to_score_lss(outputs, targets):
+        """ 
+        Scoring function for listener scorer. Model outputs are probabilities of sentences
+        under the conditional language model. To get the score, we see if the plurality of the
+        probability mass is on the target, and if so the score is 1. Otherwise the score is 0
+        """
+        all_scores = []
+        for i, predictions in enumerate(outputs):
+            scores = [0, 0, 0]
+            for j, prediction in enumerate(predictions):
+                scores[j] = np.sum(prediction[np.arange(len(targets[i])), targets[i]].numpy())
+            all_scores.append(scores)
+        print(all_scores[:10])
+        print(np.argmax(all_scores, axis=1)[:10])
+        return np.argmax(np.array(all_scores), axis=1) == 0 # all the targets are at index 0
+
+
+    def output_to_score_lss_probmass(outputs, targets):
+        """ 
+        Scoring function for listener scorer. The model outputs are probabilities of sentences
+        under the conditional language model. To get the score, we softmax those probabilities 
+        and take the probability mass of the target color as the model score.
+        """
+        all_scores = []
+        for i, predictions in enumerate(outputs):
+            scores = np.array([0, 0, 0], dtype=np.float64)
+            for j, prediction in enumerate(predictions):
+                scores[j] = np.sum(prediction[np.arange(len(targets[i])), targets[i]].numpy()) # markov assumption to sum log probabilities of words
+            # softmax scores
+            if np.sum(np.exp(scores)) == 0:
+                print(scores)
+            else:
+                scores = np.exp(scores) / np.sum(np.exp(scores))
+                # take the portion of the distribution asssigned to target (@ index 0)
+                all_scores.append(scores[0])
+        return all_scores
+
+    evaluate_model(dev_data_synth, feature_handler, lss_model, output_to_score_lss, score_model)
+
+
+
 
 if __name__ == "__main__": 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", choices=['literal_listener', 'literal_speaker', 'literal_listener_listener_click', 'imaginative_listener'],
+    parser.add_argument("--model", choices=['literal_listener', 'literal_speaker', 'literal_listener_listener_click', 'imaginative_listener',
+                                            'color_only_baseline', 'literal_speaker_scorer'],
         help="Which model you want to run")
     parser.add_argument("--retrain", default=False, help="Set to true if you want to retrain the model")
     parser.add_argument("--model_file", default=None, help="Set to load pretrained or save trained model")
@@ -213,11 +308,17 @@ if __name__ == "__main__":
         experiment_func = literal_listener_listener_click_experiment
     elif args.model == 'imaginative_listener':
         experiment_func = imaginative_listener
+    elif args.model == 'color_only_baseline':
+        experiment_func = color_only_baseline
+    elif args.model == 'literal_speaker_scorer':
+        experiment_func = literal_speaker_scorer
+    else:
+        print("Model not recognized")
 
     load_data()
 
     if args.model_file is None:
-        experiment_func() # don't retrain and save over the default model
+        experiment_func() # don't retrain and overwrite the default model
     else:
         experiment_func(train = args.retrain, model_file = args.model_file)
 

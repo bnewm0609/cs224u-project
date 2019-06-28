@@ -9,18 +9,6 @@ from evaluation import score_model
 import time
 import math
 
-
-
-# def run_experiment(train_data, assess_data, feature_handler, model, predictions_to_scores, model_scorer,
-#                     model_scorer_kwargs={}, pretrained_file = None):
-    # training
-    # if pretrained_file is None:
-    #     train_features = feature_handler.train_features() # ~6 sec
-    #     train_targets = feature_handler.train_targets() # 1-d np array of targets
-    #     model.fit(train_features, train_targets) # train the model
-    # else:
-    #     model.load_model(pretrained_file)
-
 def evaluate_model(assess_data, feature_handler, model, predictions_to_scores, model_scorer,
                     feature_handler_2=None, model_scorer_kwargs={}, accuracy=True):
     assess_features = feature_handler.test_features() # ~6 sec
@@ -31,12 +19,12 @@ def evaluate_model(assess_data, feature_handler, model, predictions_to_scores, m
     model_outputs =  model.predict(assess_features)
     model_scores = predictions_to_scores(model_outputs, assess_targets) # decide what the score we're going to use is
     result = model_scorer(assess_data, model_scores, **model_scorer_kwargs)
-    print(result)
 
     if accuracy: # also report accuracy
         model_predictions = np.argmax(model_outputs, axis=1)
         accuracy_val = sum(model_predictions == assess_targets) / len(assess_targets)
         print("Accuracy:", accuracy_val)
+        result = ((result[0], accuracy_val), result[1:]) # assumes first thing in result is the coorelation
         
 
     return result
