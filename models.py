@@ -4,6 +4,7 @@ import numpy as np
 
 import time
 import math
+from queue import PriorityQueue # for beam search in Literal Speaker
 
 
 ##########################################################
@@ -45,9 +46,9 @@ class CaptionEncoder(nn.Module):
         self.color_dim = color_dim
         self.hidden_dim = hidden_dim
         
-    def forward(self, caption, states, colors):
+    def forward(self, colors, caption):
         embeddings = self.embed(caption)
-        output, (hn, cn) = self.lstm(embeddings, states)
+        output, (hn, cn) = self.lstm(embeddings)
         
         # we only care about last output (first dim is batch size) 
         # here we are concatenating the the last output vector of the forward direction (at index -1)
@@ -67,7 +68,7 @@ class CaptionEncoder(nn.Module):
         scores = torch.matmul(scores, diff_from_mean.transpose(0,1))
         scores = -torch.diag(scores)
         distribution = self.logsoftmax(scores)
-        return distribution, output_mean, covar_matrix
+        return distribution 
     
     def init_hidden_and_context(self):
         # first 2 for each direction
@@ -157,7 +158,7 @@ class ColorGenerator(nn.Module):
         self.hidden_dim = hidden_dim
         self.color_hidden_dim = color_hidden_dim
 
-    def forward(self, caption, colors):
+    def forward(self, colors, caption):
         # get caption encodings
         embeddings = self.embed(caption)
         output, _ = self.lstm(embeddings)
@@ -193,11 +194,11 @@ class ColorSelector(nn.Module):
         output = self.nll(output)
         return output        
 
-# FOR Character-LSTM Speaker for Single Color
-class CharacterCaptionGenerator(nn.Module):
+# FOR Single Color with Linear-layer as Encoder
+class SingleColorCaptionGenerator(nn.Module):
 
     def __init__(self, color_in_dim, color_dim, vocab_size, embed_dim, speaker_hidden_dim):
-        super(CharacterCaptionGenerator, self).__init__()
+        super(SingleColorCaptionGenerator, self).__init__()
 
         # for colors
         self.color_encoder = nn.Linear(color_in_dim, color_dim)
@@ -415,11 +416,10 @@ class LiteralListener(PytorchModel):
 
         Very much inspired by the torch NMT example/tutorial thingy
         """
-        start_states = self.model.init_hidden_and_context()
         input_length = caption_tensor.size(0)
         loss = 0
 
-        model_output, _, _ = self.model(caption_tensor, start_states, color_tensor)
+        model_output = self.model(color_tensor, caption_tensor)
         model_output = model_output.view(1, -1)
 
         loss += criterion(model_output, target)
@@ -434,91 +434,13 @@ class LiteralListener(PytorchModel):
         """
         with torch.no_grad():
             caption_tensor, color_tensor = pair
-            start_states = self.model.init_hidden_and_context()
-            model_output, _, _ = self.model(caption_tensor, start_states, color_tensor)
+            model_output = self.model(color_tensor, caption_tensor)
 
             model_output = model_output.view(1, -1)
             return model_output
 
 
-# Replaced by the implementation below that can sample > 1
-
-# class LiteralSpeaker(PytorchModel):
-    
-#     def __init__(self, model, max_gen_len=20, **kwargs):
-#         super(LiteralSpeaker, self).__init__(model, **kwargs)
-#         self.max_gen_len = max_gen_len
-        
-#     def predict(self, X, sample=1):
-#         """
-#         There are a bunch of choices for what we might want to do here:
-#         1. X contains just color contexts and we incrementatlly sample 
-#            using beam search to generate a caption and return that.
-#         2. X contains color contexts and captions and we return the
-#            softmax probabilities assigned to each token in the caption
-#            (for calculating perplexity or some notion of how probable
-#            our model believes the caption is given the color context)
-
-#         Right now 1 is implemented, but I think 2 is better in the long
-#         run. We are greedily taking the most likely token
-#         """
-#         # Create a tensor with just the starting token
-#         all_tokens = []
-#         max_gen_len = 20
-
-#         self.model.eval()
-#         with torch.no_grad():
-#             for i, feature in enumerate(X):
-#                 caption, colors = feature
-#                 caption = torch.tensor([caption], dtype=torch.long)
-#                 colors = torch.tensor([colors], dtype=torch.float)
-#                 colors = np.flip(colors.numpy(), axis=1).copy()
-#                 colors = torch.from_numpy(colors)
-#                 tokens = caption[:, 0].view(-1, 1)
-#                 for i in range(max_gen_len):
-#                     vocab_preds = self.model(colors, tokens)[:,-1:,:] # just distribution over last token
-#                     _, prediction_index = vocab_preds.max(2)  # taking the max over the innermost (2nd) axis
-#                     tokens = torch.cat((tokens, prediction_index), dim=1)
-#                     if prediction_index.item() == caption[:, -1].view(-1, 1):
-#                         break
-#                 all_tokens.append(tokens.numpy())
-
-#         return all_tokens
-
-
-#     def train_iter(self, caption_tensor, color_tensor, target, criterion):
-#         """
-#         Iterates through a single training pair, querying the model, getting a loss and
-#         updating the parameters. (TODO: addd some kind of batching to this).
-
-#         Very much inspired by the torch NMT example/tutorial thingy
-#         """
-#         # start_states = self.model.init_hidden_and_context()
-#         #input_length = caption_tensor.size(0)
-#         loss = 0
-
-#         # target color is FIRST in the tensor, so flip it so it's LAST
-#         color_tensor = np.flip(color_tensor.numpy(), axis=1).copy()
-#         color_tensor = torch.from_numpy(color_tensor);
-#         # color_features = color_encoder(color_tensor)
-#         model_output = self.model(color_tensor, caption_tensor)
-
-#         # we don't care about the last prediction, because nothing follows the final </s> token
-#         model_output = model_output[:,:-1,:].squeeze(0) # go from 1 x seq_len x vocab_size => seq_len x vocab_size
-#                                                         # for calculating loss function:
-#                                                         # see here for details when implementing batching
-#                                                         # https://discuss.pytorch.org/t/calculating-loss-for-entire-batch-using-nllloss-in-0-4-0/17142/7
-
-#         # targets should be caption without start index: i.e. [the blue one </s>] so we can predict
-#         # next tokens from input like [<s> the blue one]
-
-#         target = target.squeeze()
-#         loss += criterion(model_output, target)
-
-#         return loss
-
-
-from queue import PriorityQueue
+# Used for literal speaker
 
 class BeamNode():
     def __init__(self, log_prob, tokens, ended):
@@ -651,7 +573,6 @@ class LiteralSpeakerScorer(LiteralSpeaker):
                     colors = np.roll(colors_before_roll, shift=r, axis=0)
                     # flip colors so target is last - consistent with target being last
                     colors = np.flip(colors, axis=0).copy()
-                    #print(colors)
                     color_tensor = torch.tensor([colors])
 
                     results = self.model(color_tensor, caption_tensor)
@@ -663,15 +584,15 @@ class LiteralSpeakerScorer(LiteralSpeaker):
 class ImaginativeListener(PytorchModel):
     def __init__(self, model, use_color=True, **kwargs):
         super(ImaginativeListener, self).__init__(model, **kwargs)
+        # the Imaginative Listener might not use the colors at all, but this could be difficult
         self.use_color = use_color
 
     def train_iter(self, caption_tensor, color_tensor, target_tensor, criterion):
         loss = 0
 
-        # not using colors at the moment
         if self.use_color:
             color_tensor = color_tensor[:, 1:3, :] # don't include the target at index 0
-            model_output = self.model(caption_tensor, color_tensor)
+            model_output = self.model(color_tensor, caption_tensor)
         else:
             model_output = self.model(caption_tensor)
 
@@ -694,7 +615,7 @@ class ImaginativeListener(PytorchModel):
                 color_tensor = torch.tensor([colors], dtype=torch.float)
                 if self.use_color:
                     color_tensor = color_tensor[:, 1:3, :] # don't include the target
-                    model_output = self.model(caption_tensor, color_tensor)
+                    model_output = self.model(color_tensor, caption_tensor)
                 else:
                     model_output = self.model(caption_tensor)
 
