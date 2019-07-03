@@ -165,6 +165,43 @@ class MonroeData():
         print(caption)
         plt.show()
 
+    def display_custom_game(self, colors, caption):
+        """
+
+        """
+        # width and height of each rectangle
+        width = 400
+        height = 800
+
+        # bottom corners of all the rectangles
+        bottom_corners = [(x - 600, -400) for x in range(0, width*len(colors), width)]
+
+        color_rects = []
+        for i, corner in enumerate(bottom_corners):
+            # target color will always be on left, we want clicked color
+            # to stand out with a thick (linewidth=5), red outline that is
+            # at the top of the rectangle stack (zorder = 5) displayed
+            outline_color, stack_order, line_width = ("black", 0, None)
+            color_rects.append(matplotlib.patches.Rectangle(corner, width, height,
+                                                            facecolor=colors[i].rgb_norm, 
+                                                            edgecolor=outline_color,
+                                                            zorder = stack_order,
+                                                            linewidth=line_width))
+        # add rectangles to figures
+        fig = plt.figure()
+        ax = fig.add_subplot(111)
+        for rect in color_rects:
+            ax.add_patch(rect)
+
+        # hide axis labels
+        ax.set_yticks([])
+        ax.set_xticks([])
+        
+        # display caption and game
+        print(caption)
+        plt.xlim([-600, width*len(colors) - 600])
+        plt.ylim([-400, 400])
+        plt.show()
         
     def display_game_for_gameid(self, game_id, round_num = None):
         df_indices = []

@@ -137,7 +137,6 @@ def literal_speaker_experiment(train=False, evaluate=True, epochs=5, color_in_di
 
     print("Initializing model")
     model = LiteralSpeaker(CaptionGenerator, optimizer=torch.optim.Adam, lr=lr, num_epochs=epochs)
-    #lit_speaker = Speaker(color_embed_dim, caption_phi.caption_indexer.size, embed_dim, hidden_dim)
     model.init_model(color_in_dim=color_in_dim, color_dim=color_dim,
                                   vocab_size=caption_phi.caption_indexer.size, embed_dim=embed_dim,
                                  speaker_hidden_dim=hidden_dim)
