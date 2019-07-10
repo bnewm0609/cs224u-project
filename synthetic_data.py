@@ -9,6 +9,9 @@ import random
 import pandas as pd
 import pickle as pkl
 
+NUM_ROUNDS_PER_GAME = 50
+NUM_CONDITIONS = 3
+
 def create_synth_data(monroe_df, fake_entries, correct_entries, num_divisions = 5, filename = "synthdata"):
     """
     Given lists of fake and real MonroeDataEntries divided up by condition, create fake speaker
@@ -35,18 +38,18 @@ def create_synth_data(monroe_df, fake_entries, correct_entries, num_divisions = 
     condition_counter_fake = 0
     condition_counter_correct = 0
     min_condition_samples = min(min([len(samples) for samples in fake_entries]), min([len(samples) for samples in correct_entries])) # 4173 - train # dev - 4320 # we have the fewest number of correct close samples
-    num_games = 3*min_condition_samples//((num_divisions + 1) * 25)
+    num_games = NUM_CONDITIONS * min_condition_samples//((num_divisions + 1) * (NUM_ROUNDS_PER_GAME / 2))
 
     # let's divide into fifths
     for i in range(num_divisions + 1): # 0...num_divisions inclusive
         for game_id in range(num_games): # 150 size of each group required over whole game over dataset, 3*4320
             synth_game = []
-            for j in range(50):
-                if j < (50/num_divisions) * i: # add fake stuff
-                    synth_game.append(fake_entries[condition_counter_fake % 3][condition_counter_fake // 3])
+            for j in range(NUM_ROUNDS_PER_GAME):
+                if j < (NUM_ROUNDS_PER_GAME / num_divisions) * i: # add fake stuff
+                    synth_game.append(fake_entries[condition_counter_fake % NUM_CONDITIONS][condition_counter_fake // NUM_CONDITIONS])
                     condition_counter_fake += 1
                 else: # add real stuff
-                    synth_game.append(correct_entries[condition_counter_correct % 3][condition_counter_correct // 3])
+                    synth_game.append(correct_entries[condition_counter_correct % NUM_CONDITIONS][condition_counter_correct // NUM_CONDITIONS])
                     condition_counter_correct += 1
             random.shuffle(synth_game)
             synth_data.extend(synth_game)
@@ -57,10 +60,10 @@ def create_synth_data(monroe_df, fake_entries, correct_entries, num_divisions = 
 
     for round_counter, sde in enumerate(synth_data):
         idx = sde.index
-        game_id = "synth-%d"%(round_counter // 50)
+        game_id = "synth-%d"%(round_counter // NUM_ROUNDS_PER_GAME)
         synth_data_df.loc[round_counter] = monroe_df.data.loc[idx]
         synth_data_df.loc[round_counter, "gameid"] = game_id
-        synth_data_df.loc[round_counter, "roundNum"] = round_counter % 50 + 1 # they one index rounds so we do the same...
+        synth_data_df.loc[round_counter, "roundNum"] = round_counter % NUM_ROUNDS_PER_GAME + 1 # they one index rounds so we do the same...
         synth_data_df.loc[round_counter, "outcome"] = sde.outcome
         synth_data_df.loc[round_counter, "numOutcome"] = 1 if sde.outcome else 0
 

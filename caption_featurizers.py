@@ -2,6 +2,7 @@ import nltk
 from collections import Counter
 import torch
 import numpy as np
+import sentencepiece as spm # for using subword tokenization
 
 
 # GLOVE STUFF
@@ -51,6 +52,9 @@ class Tokenizer:
         pass
 
 class WhitespaceTokenizer(Tokenizer):
+    """
+    Separates tokens based only on whitespace
+    """
     def tokenize(self, sentence):
         return nltk.word_tokenize(sentence)
     
@@ -76,6 +80,44 @@ class EndingTokenizer(Tokenizer):
             if not inserted:
                 tokens.append(word)
         return tokens
+
+class CharacterTokenizer(Tokenizer):
+    """
+    Treats each character as a separate token
+    """
+    def tokenize(self, sentence):
+        return list(sentence)
+
+class SentencePieceTokenizer(Tokenizer):
+    """
+    Uses SentencePiece library to tokenize into subword units
+
+    SentencePiece is a delightful tool with a large number of options for customization.
+    It tracks word indices and special vocabularies and can even do some filtering
+    We are going to ignore most of those options here and literally just use it to split up sentences
+
+    The model_file was created using the following script at the python command prompt:
+    >>> import sentencepiece as spm
+    >>> spm.SentencePieceTrainer.train('--input=data/csv/train_utterances_monroe.txt --model_prefix=m_{100, 500}
+                                        --vocab_size={100, 500} --normalization_rule_name=nfkc_cf')
+
+    normalization_rule_name=nfkc_cf does some stuff with unicode and also lowercases inputs
+    More details here: https://github.com/google/sentencepiece/blob/master/python/sentencepiece_python_module_example.ipynb
+    """
+
+    def __init__(self, model_file="../data/sp_vocab/m_100.model"):
+        self.sp_tokenizer = spm.SentencePieceProcessor()
+        self.sp_tokenizer.load(model_file)
+
+    def tokenize(self, sentence):
+        return self.sp_tokenizer.encode_as_pieces(sentence)
+
+    def untokenize(self, tokens):
+        """
+        Usually it's pretty easy to tell how to combine tokens to form the whole sentence, 
+        but in this case it might be tricky, so let's include it here
+        """
+        return ''.join(tokens).replace('▁', ' ')
 
 
 class CaptionIndexer:
@@ -104,7 +146,11 @@ class CaptionIndexer:
         return self.idx2word[idx]
     
     def get_idx_from_word(self, word):
-        return self.word2idx.get(word, self.word2idx[self.UNK])
+        try:
+            return self.word2idx.get(word, self.word2idx[self.UNK])
+        except KeyError: # it's possible that there are no unk characters
+            self.add_sentence([self.UNK])
+            return self.word2idx.get(word, self.word2idx[self.UNK])
     
     def to_indices(self, sentence, construct=False):
         if construct:
