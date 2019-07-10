@@ -146,7 +146,11 @@ class CaptionIndexer:
         return self.idx2word[idx]
     
     def get_idx_from_word(self, word):
-        return self.word2idx.get(word, self.word2idx[self.UNK])
+        try:
+            return self.word2idx.get(word, self.word2idx[self.UNK])
+        except KeyError: # it's possible that there are no unk characters
+            self.add_sentence([self.UNK])
+            return self.word2idx.get(word, self.word2idx[self.UNK])
     
     def to_indices(self, sentence, construct=False):
         if construct:
