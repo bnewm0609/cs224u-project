@@ -4,3 +4,5 @@ __pycache__
 .*.swo
 *.pyc
 data/glove.6B.100d.txt
+csli_notebooks/*
+model/literal_listener_predict_success*
