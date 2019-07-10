@@ -78,6 +78,9 @@ class CaptionEncoder(nn.Module):
 
 # FOR SPEAKER
 class ColorEncoder(nn.Module):
+    """
+    Used by Literal Speaker to encode the context colors with an LSTM
+    """
     
     def __init__(self, color_dim, hidden_dim):
         super(ColorEncoder, self).__init__()
@@ -371,7 +374,7 @@ class PytorchModel():
                 target = torch.tensor([self.val_targets[i]]) 
                 total_loss += self.train_iter(caption, colors, target, criterion).item()
             print("="*25)
-            print("AFTER EPOCH {} - AVERAGE VALIDATION LOSS: {}".format(i, total_loss / len(self.val_features)))
+            print("AFTER EPOCH {} - AVERAGE VALIDATION LOSS: {}".format(epoch_num, total_loss / len(self.val_features)))
             print("="*25)
         self.model.train()
 
@@ -397,14 +400,14 @@ class LiteralListener(PytorchModel):
         Produces and tracks model outputs
         """
         self.model.eval()
-        model_outputs = np.empty([len(X), 3])
+        model_outputs = [] # np.empty([len(X), len(X[0][1])]) # (num_entries, num_colors)
 
         for i, feature in enumerate(X):
             caption, colors = feature
             caption = torch.tensor([caption], dtype=torch.long)
             colors = torch.tensor([colors], dtype=torch.float)
             model_output_np = self.evaluate_iter((caption, colors)).view(-1).numpy()
-            model_outputs[i] = model_output_np
+            model_outputs.append(model_output_np)
 
         return np.array(model_outputs)
 
@@ -439,6 +442,9 @@ class LiteralListener(PytorchModel):
             model_output = model_output.view(1, -1)
             return model_output
 
+# the ConditionPredictor uses the exact same structure as the literal speaker, so
+# let's make it use the same class
+ConditionPredictor = LiteralListener
 
 # Used for literal speaker
 
@@ -556,7 +562,7 @@ class LiteralSpeaker(PytorchModel):
 class LiteralSpeakerScorer(LiteralSpeaker):
     """
     Only difference between this and above Literal Speaker is the predict function. Above we care about generating the next tokens with beam
-    search but here we want to use the model to get the log probability of the paseed feature
+    search but here we want to use the model to get the log probability of the passed feature
     """
 
     def predict(self, X):
