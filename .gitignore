@@ -4,3 +4,4 @@ __pycache__
 .*.swo
 *.pyc
 data/glove.6B.100d.txt
+notebooks/*
