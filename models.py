@@ -520,8 +520,8 @@ class LiteralSpeaker(PytorchModel):
                 caption, colors_before_roll = feature
                 caption = torch.tensor([caption], dtype=torch.long)
                 predictions_all_targets =  []
-                for r in range(len(colors_before_roll)): # Roll through the different possible targets being last
-                    colors = np.roll(colors_before_roll, shift=r, axis=0)
+                for r in range(len(colors_before_roll)): # Roll through the different possible targets being last in the same order the colors are presented
+                    colors = np.roll(colors_before_roll, shift=-r, axis=0) # hence the -r
                     colors = torch.tensor([colors], dtype=torch.float)
                     colors = np.flip(colors.numpy(), axis=1).copy()
                     colors = torch.from_numpy(colors)
@@ -575,8 +575,9 @@ class LiteralSpeakerScorer(LiteralSpeaker):
                 
                 each_color_outputs = []
                 for r in range(len(colors_before_roll)):
-                    # we want to get probability that each color is target
-                    colors = np.roll(colors_before_roll, shift=r, axis=0)
+                    # we want to get probability that each color is target.
+                    # r is negative so indices of color output line up with indices of colors passed
+                    colors = np.roll(colors_before_roll, shift=-r, axis=0)
                     # flip colors so target is last - consistent with target being last
                     colors = np.flip(colors, axis=0).copy()
                     color_tensor = torch.tensor([colors])
