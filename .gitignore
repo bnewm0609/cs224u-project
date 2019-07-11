@@ -5,3 +5,4 @@ __pycache__
 *.pyc
 data/glove.6B.100d.txt
 notebooks/*
+model/literal_listener_predict_success*
