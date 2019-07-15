@@ -1,0 +1,15 @@
+name: listener-evaluation
+channels:
+    - pytorch
+    - defaults
+dependencies:
+    - scipy
+    - numpy
+    - pandas
+    - nltk
+    - scikit-learn
+    - scikit-image
+    - matplotlib
+    - pytorch
+    - pip
+        - sentencepiece
