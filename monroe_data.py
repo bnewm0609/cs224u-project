@@ -390,7 +390,6 @@ class Color():
     
     def __eq__(self, other):
         return other.hsl == self.hsl and other.rgb == self.rgb
-            
     
             
 if __name__ == "__main__": 
