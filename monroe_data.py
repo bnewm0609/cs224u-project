@@ -321,6 +321,15 @@ class MonroeDataEntry():
     def __repr__(self):
         return self.caption
 
+    def __eq__(self, other):
+        return hash(other) == hash(self)
+
+    def __hash__(self):
+        hash_str = "{}".format(self.caption)
+        for color in colors:
+            hash_str += "{}".format(hash(color))
+        return int(hash_str)
+
 class Color():
     """
     Class used for storing various color formats that are used in the experiment data (HSL),
@@ -389,10 +398,13 @@ class Color():
         return 'hsl: {}, rgb {}, hsv {}'.format(self.hsl, self.rgb, self.hsv)
     
     def __eq__(self, other):
-        return other.hsl == self.hsl and other.rgb == self.rgb
-            
+        # return np.allclose(other.hsl, self.hsl) and np.allclose(other.rgb, self.rgb)
+        return hash(other) == hash(self)
     
-            
+    def __hash__(self):
+       return int(''.join(['{:02X}'.format(int(coord)) for coord in rgb]), 16)
+
+        
 if __name__ == "__main__": 
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_file", type=str, default="filteredCorpus.csv", help="csv file with color data for dataframe. Download from http://cocolab.stanford.edu/datasets/colors.html")
