@@ -1,12 +1,12 @@
-# This file is going to hold some useful functions/classes used in the 
-# Replication Evaluation Notebook that describes how the results were obtained 
+"""This file is going to hold some useful functions/classes used in the
+Replication Evaluation Notebook that describes how the results were obtained"""
 from itertools import chain # flatten
 import matplotlib.pyplot as plt
-from nlgeval import NLGEval # for running baseline eval metrics
 import numpy as np
-import pandas as pd
 from scipy.special import logsumexp
 from scipy.stats import pearsonr, spearmanr, kendalltau
+
+from nlgeval import NLGEval # for running baseline eval metrics
 
 import caption_featurizers
 import color_featurizers
@@ -20,7 +20,7 @@ from monroe_data import MonroeData, MonroeDataEntry, Color
 def normalize(caption):
     """
     Makes caption text lowercase and removes uneeded white space.
-    
+
     Args:
         caption: a candidate caption string.
 
@@ -32,7 +32,7 @@ def normalize(caption):
 def flatten(ctxs):
     """
     Turns 2-d list of lists into 1-d list.
-    
+
     Equivalent to np.flatten but for non-square 2-d lists.
 
     Args:
@@ -47,7 +47,7 @@ def flatten(ctxs):
 def target_col_for_context_id(df, context_id):
     """
     Gets the target color given a context id and a dataframe to search in.
-    
+
     Args:
         df: the dataframe that holds the target color.
         context_id: the id of the context whose target color is desired.
@@ -56,12 +56,14 @@ def target_col_for_context_id(df, context_id):
     """
     ctx_entry = df[df["contextId"] == context_id].iloc[0]
     statuses = ['click', 'alt1', 'alt2']
+    color = (None, None, None)
     for status in statuses:
         if ctx_entry[f"{status}Status"] == "target":
             color = (ctx_entry[f"{status}ColH"],
                      ctx_entry[f"{status}ColS"],
                      ctx_entry[f"{status}ColL"])
-            return color
+            break
+    return color
 
 ########################## PLOTTING FUNCTIONS ###########################
 
@@ -79,13 +81,13 @@ def plot_score_dists_for_metric(scores, metric):
         None. Just prints correlations and displays graph.
     """
     plot_data = [score[metric][1] for score in scores]
-    
+
     # let's also get the correlation coefficients
     # domain is [1, 1, 1, ...], [2, 2, 2, ...], [3, 3, 3, 3, ...]
     correlation_support = []
     for i, d in enumerate(plot_data):
         correlation_support.extend([i+1] * len(d))
-        
+
     plot_data_flat = flatten(plot_data)
 
     pearson_r = pearsonr(correlation_support, plot_data_flat)
@@ -96,25 +98,25 @@ def plot_score_dists_for_metric(scores, metric):
     print("Kendall τ: {:.3f}, p = {:.3f}".format(kendall_t[0], kendall_t[1]))
 
     # now plot the violin plots
-    vpdata = plt.violinplot(plot_data, bw_method=0.2, 
+    vpdata = plt.violinplot(plot_data, bw_method=0.2,
                             showmeans=True, showextrema=True)
     vpdata["cbars"].set(linewidths=1)
     vpdata["cmeans"].set(linewidths=1)
     vpdata["cmins"].set(linewidths=1)
     vpdata["cmaxes"].set(linewidths=1)
-    
+
     # add scatter plots on top of vilions
     plt.scatter(correlation_support, plot_data_flat, alpha=0.01, s=5)
-    
+
     plt.xticks([1, 2, 3], ["Descriptive", "Ambiguous", "Misleading"])
     plt.title("{} scores of captions".format(metric))
     plt.show()
-    
+
 def plot_score_dists(*scores, metrics=['Bleu_1', 'ROUGE_L', 'METEOR', 'CIDEr']):
     """Plots distributions of scores asssigned from all the metrics given."""
     for metric in metrics:
         plot_score_dists_for_metric(scores, metric)
-        
+
 
 ######################## METRIC CALCULATION WRAPPERS #########################
 
@@ -123,15 +125,15 @@ class NgramMetrics:
     Wrapper for calculating Ngram Overlap metrics.
 
     Attributes:
-        nlgeval_metrics: the NLGEval object (from Sharma et al., 2018) that 
-            performs all of the evaluations. We do not load the glove or 
+        nlgeval_metrics: the NLGEval object (from Sharma et al., 2018) that
+            performs all of the evaluations. We do not load the glove or
             skipthought evaluaations and only use the n-gram overlap metrics.
     """
 
     def __init__(self):
         """
         Loads metrics without extra (slow) models.
-        
+
         Calculates BLEU-1, BLEU-2, BLEU-3, BLEU-4, ROUGE-L, METEOER, and CIDEr.
         """
         self.nlgeval_metrics = NLGEval(no_overlap=False,
@@ -146,7 +148,7 @@ class NgramMetrics:
             refs: list of lists of all reference caption strings for each
                 candidate caption.
             hyps: list of hypothesis or candidate captions.
-        
+
         Returns:
             Dictionary of metric names to a tuple containing the mean score
             and the list of all scores. This list is the same size as the
@@ -189,11 +191,11 @@ class ListenerMetrics:
         model_ll: the pretrained literal listener model that selects a color
             given a caption.
         model_pl: the pretrained literal speaker model that gives the
-            probability of a caption given a color context. It's used in the 
+            probability of a caption given a color context. It's used in the
             pragmatic listener model.
 
     """
-    
+
     def __init__(self):
         """
         Sets up training data, color/caption feature functions, and pretrained
@@ -202,7 +204,7 @@ class ListenerMetrics:
         # Data used to generate vocab (this is suboptimal)
         self.train_data = MonroeData("../data/csv/train_corpus_monroe.csv",
                                      "../data/entries/train_entries_monroe.pkl")
-        
+
         self.caption_phi = caption_featurizers.CaptionFeaturizer(
             tokenizer=caption_featurizers.EndingTokenizer)
         # Literal Listener uses RGB for color features
@@ -210,8 +212,8 @@ class ListenerMetrics:
             color_featurizers.color_phi_fourier, "rgb", normalized=True)
         # Pragmatic Listener uses HSV for color features
         self.color_phi_pl = color_featurizers.ColorFeaturizer(
-            color_featurizers.color_phi_fourier, "hsv", normalized=True) 
-        
+            color_featurizers.color_phi_fourier, "hsv", normalized=True)
+
         # placeholder feature handler to load vocab (this is ugly) TODO
         fh = FeatureHandler(self.train_data, self.train_data,
                             self.caption_phi, self.color_phi_ll)
@@ -223,7 +225,7 @@ class ListenerMetrics:
                     hidden_dim=100,
                     vocab_size=fh.caption_featurizer.caption_indexer.size,
                     color_dim=54)
-        
+
         self.model_ll.load_model(
             "../model/literal_listener_5epoch_endings_tkn.params")
         
@@ -234,7 +236,7 @@ class ListenerMetrics:
                     vocab_size=fh.caption_featurizer.caption_indexer.size,
                     embed_dim=100,
                     speaker_hidden_dim=100)
-        
+
         self.model_pl.load_model("../model/literal_speaker_30epochGLOVE.params")
 
     def get_lit_listener_scores(self, eval_contexts):
@@ -258,12 +260,12 @@ class ListenerMetrics:
         preds = self.model_ll.predict(X_assess)
         scores = preds[np.arange(len(preds)), y_assess]
         return scores
-    
-    
+
+
     def speaker_target(self, data_entry):
         """
         Gets gold tokens for finding caption probabilities.
-        
+
         Args:
             data_entry: i.e. a color-caption context
 
@@ -273,16 +275,16 @@ class ListenerMetrics:
         _, caption_ids = self.caption_phi.to_string_features(data_entry.caption)
         target = caption_ids[1:]
         return target
-    
+
     def speaker_predictions_to_scores(self, results, targets):
         """
         Converts speaker's predictions over tokens to a score for each color.
 
         Args:
             results: the outputted log-probs from the speaker models.
-            targets: the gold token sequences used for calculating the 
+            targets: the gold token sequences used for calculating the
                 probabilities of the captions.
-        
+
         Returns:
             The log-probabilities the pragmatic speaker model assigns to the
             true targets being the target color.
@@ -327,11 +329,11 @@ class ListenerMetrics:
         preds = self.model_pl.predict(X_assess)
         scores = self.speaker_predictions_to_scores(preds, y_assess)
         return scores
-    
+
     def get_listener_scores(self, eval_contexts):
         """
         Runs all listener eval metrics and return scores in a dictionary.
-        
+
         Wrapper function for handling the calling of the literal listener and
         pragmatic listener evaluation functions.
 
@@ -343,7 +345,7 @@ class ListenerMetrics:
             methods as keys and a tuple of mean score and list of scores
             assigned by those methods as values.
         """
-        
+
         ll_scores = np.exp(self.get_lit_listener_scores(eval_contexts))
         pl_scores = np.exp(self.get_prag_listener_scores(eval_contexts))
         results = {
