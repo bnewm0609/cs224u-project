@@ -13,7 +13,6 @@ import pickle as pkl
 from collections import Counter
 import nltk
 
-# Variables used that might be useful to access outside of the class
 
 # Note: Monroe et al., 2017 does not include any listener utterances, so the total
 # of these partitions is 46994 rather than 57946
@@ -21,32 +20,37 @@ import nltk
 monroe_train_dev_test_partitions = {'train':15665, 'dev':15670, 'test': 15659} 
 
 class MonroeData():
+    """
+    Wraps the CSV file containing the filtered data from Monroe et al., 2017 and the data we collect.
+    """
     
     def __init__(self, data_filename, entries_filename=None, single_speaker=True, ss_method="pool"):
         """
+        Initializes the MonroeData object with the CSV passed.
+
         MonroeData allows for storage, access, and display of data from the Monroe et al, 2017
         color experiments. Each csv row is stored in a MonroeDataEntry object and MonroeData
         stores a python list of these objects as well as the underlying dataframe.
 
-        Params:
-        data_filename - csv file that holds the Monroe et al data
+        Args:
+            data_filename - csv file that holds the Monroe et al data
 
-        entries_filename - If the entries_filename is not None, it should be a pickle file that can be unpacked
-        to get at the MonroeEntry objects in the entries without taking the 3 or so minutes
-        to generate them.
+            entries_filename - If the entries_filename is not None, it should be a pickle file that can be unpacked
+                to get at the MonroeDatakEntry objects in the entries without taking the 3 or so minutes
+                to generate them.
 
-        single_speaker - If single_speaker is True, the dataframe created from data_filename is filtered to include
-        only utterances from the speaker according to one of two methods (specified by the ss_method
-        parameter).
-            - pool: take every utterance from a given game and round that the speaker uttered and group
-                    them together as a single utterance. These utterances are space separated. [Default]
-            - final: take the last utterance the speaker made from a given game and round use that as
-                    representative of the speaker's utterance for the entire game
+            single_speaker - If single_speaker is True, the dataframe created from data_filename is filtered to include
+                only utterances from the speaker according to one of two methods (specified by the ss_method
+                parameter).
+                - pool: take every utterance from a given game and round that the speaker uttered and group
+                        them together as a single utterance. These utterances are space separated. [Default]
+                - final: take the last utterance the speaker made from a given game and round use that as
+                        representative of the speaker's utterance for the entire game
 
-        ss_method - See single_speaker. Ignored if single_speaker is false
+            ss_method - See single_speaker. Ignored if single_speaker is false
 
-        MAKE SURE THAT THE ENTRIES FILE AND DATA FILE (with filtering) MATCH UP!
-
+        Returns:
+            None
         """
         self.data = pd.read_csv(data_filename)
         if single_speaker:
@@ -77,8 +81,11 @@ class MonroeData():
         
     def read_data(self):
         """
-        iterator for getting training examples from self.entries (if they have been read in from a
-        pkl file) or from the dataframe rows. Constructs the vocab from the tokens in the entries
+        Iterates over the CSV file rows adding them to entries list.
+
+        This method is a generator for getting training examples from
+        self.entries (if they have been read in from a pkl file) or from
+        the dataframe rows. Constructs the vocab from the tokens in the entries
         """
         for k, row in self.data.iterrows():
             if len(self.entries) < self.data.shape[0]:
@@ -89,19 +96,25 @@ class MonroeData():
 
     def read_vocab(self):
         """
-        Initializes the self.vocab counter with word counts
+        Initializes the self.vocab counter with word counts.
         """
         pass
     
     def train_dev_test_split(self, partitions=monroe_train_dev_test_partitions, filenames={'train': 'train_corpus.csv', 'dev': 'dev_corpus.csv', 'test': 'test_corpus.csv'}, random=False):
         """
-        Creates a random partition of entries in the self.data to form a train, dev, test
-        split according to the partitions argument. new dataframes are saved to their 
-        respective files in filenames
+        Creates a random partition of entries in the self.data to form a train, dev, test split.
 
-        Params:
-        partitions - {'train': ###, 'dev': ###, 'test': ###} [default from Monroe et al., 2017 paper]
-        filenames - {'train': 'train_corpus.csv', 'dev': 'dev_corpus.csv', 'test': 'test_corpus.csv'} [default]
+        The number of entries in each of the train, dev, and test splits is given. According to
+        the partitions argument. new dataframes are saved to their respective files in filenames.
+
+        Args:
+            partitions - Dictionary containing how many entries are each of the splits
+                {'train': ###, 'dev': ###, 'test': ###} [default from Monroe et al., 2017 paper]
+            filenames - The names of the files that the partioned data will be in.
+                Default is {'train': 'train_corpus.csv', 'dev': 'dev_corpus.csv', 'test': 'test_corpus.csv'}
+
+        Returns:
+            train, dev, and test Pandas Dataframes.
         """
         num_train = partitions['train']
         num_dev = partitions['dev']
@@ -143,17 +156,21 @@ class MonroeData():
 
     def save_entries(self, filename):
         """
-        Save the contents of the entries list to the specified pkl file
+        Save the contents of the entries list to the specified pkl file.
+
+        Args:
+            filename - the name of the pickle file holding the entries
         """
         with open(filename, "wb") as pkl_file:
             pkl.dump(self.entries, pkl_file)
 
     def display_target(self, color, caption):
         """
-        color is normalized rgb (i.e. all values between 0 and 1) - see Color class for implementation
-        caption is string displayed with image
-        
-        Displays the color in a rectangle with the caption above it
+        Displays the color in a rectangle with the caption above it.
+
+        Args:
+            color - list with rgb values - all values normalized between 0 and 1
+            caption - string displayed above image
         """
         fig = plt.figure()
         ax = fig.add_subplot(111)
@@ -167,7 +184,14 @@ class MonroeData():
 
     def display_custom_game(self, colors, caption):
         """
+        Displays color contexts in a rectangle and caption.
 
+        These colors and captions can be completely independent of
+        the entries in the MonroeData object
+
+        Args:
+            colors - A list of Colors that to be displayed along with the captions.
+            caption - A string containing the caption to displayed with the colors.
         """
         # width and height of each rectangle
         width = 400
@@ -204,6 +228,22 @@ class MonroeData():
         plt.show()
         
     def display_game_for_gameid(self, game_id, round_num = None):
+        """
+        Displays the color context and caption for a particular game and round.
+        
+        The Monroe et al., 2017 data comes in games of 50 rounds. If no round
+        number is specified, al 50 rounds will be displayed. In the data we
+        collect we also put in game ids but this method is intended for use
+        with the Monroe data specifically. For our data use display_target_for_idx
+        or display_custom_game.
+
+        Args:
+            game_id - the unique game identifier from the Monroe et al., Dataset.
+            round_num - one of three values:
+                1. the number of the specific context within the game to display.
+                2. a list of contexts numbers to display.
+                3. None (by default) - all of the rounds in the game are displayed.
+        """
         df_indices = []
         round_num_list = []
         if round_num is None:
@@ -227,16 +267,23 @@ class MonroeData():
     
     def display_target_for_idx(self, row_index):
         """
-        Displays just the target color and caption for the entry at the given index
+        Displays just the target color and caption for the entry at the given index.
+
+        Args:
+            row_index - the index into the dataframe of the target color to display.
         """
         data_entry = self.entries[row_index]
         self.display_target(data_entry.colors[data_entry.target_idx].rgb_norm, data_entry.caption)
     
     def display_game(self, row_index):
         """
-        Takes an index and displays an annotated version of the game.
-        Target color is on left
-        Clicked color is outlined in red
+        Displays the full color context and caption for a index into the dataframe.
+
+        Takes an index and displays an annotated version of the round at that index.
+        The target color is on left, and the clicked color is outlined in red.
+        
+        Args:
+            row_index - the index into the dataframe of the round to display.
         """
         data_entry = self.entries[row_index]        
         bottom_corners = [(-600,-400), (-200,-400), (200,-400)]
@@ -291,7 +338,14 @@ class MonroeDataEntry():
     Note: this is intended more for useful exploration than for speed and efficiency
     """
     def __init__(self, k, raw_row):
-        # format: [target, distr1, distr2]
+        """
+        Constructs MonroeDataEntry Object
+
+        Args:
+            k - the index of the entry in the MonroeData Pandas Dataframe.
+            raw_row - the Pandas Dataframe row containing all of the data to parse.
+        """
+        # color order: [target, distr1, distr2]
         self.click_to_idx = {'target': 0, 'distr1':1, 'distr2':2}
         
         self.index = k
@@ -312,6 +366,12 @@ class MonroeDataEntry():
         return (color_idx, color)
             
     def parse_colors(self, raw_row):
+        """
+        Parses the colors into Color Objects from the raw_row.
+
+        Args:
+            raw_row - the Pandas Dataframe row containing the colors.
+        """
         colors = [None, None, None]
         for field in ['click', 'alt1', 'alt2']:
             color_idx, color = self._parse_color(raw_row, field)
@@ -333,10 +393,24 @@ class MonroeDataEntry():
 class Color():
     """
     Class used for storing various color formats that are used in the experiment data (HSL),
-    and for plotting colors (RGB and RGB_norm)
+    and for plotting colors (RGB). Also stored are normalized versions of the colors with 
+    coordinates 0 to 1 instead of their natural scales.
+
+    Available color formats:
+        1. RGB / RGB_NORM
+        2. HSL / HSL_NORM
+        3. HSV / HSV_NORM
     """
 
     def __init__(self, coordinate_1, coordinate_2, coordinate_3, space='hsl'):
+        """
+        Initializes Color object.
+        
+        Args:
+            coordinate_x - the xth coordinate of the color
+            space - whether the passed coordinates are in hsl or rgb
+
+        """
         if space.lower() == 'hsl':
             self.hsl = [coordinate_1, coordinate_2, coordinate_3]
             self.rgb = self.hsl_to_rgb(self.hsl)
@@ -356,27 +430,42 @@ class Color():
         self.hsv_norm = self.normalize_hsv(self.hsv)
     
     def normalize_hsl(self, hsl):
+        """
+        Normalizes hsl coordinates to lie between 0 and 1.
+        """
         norm_circle = cols.Normalize(0, 360)
         norm_hundred = cols.Normalize(0, 100)
         return [norm_circle(hsl[0]), norm_hundred(hsl[1]), norm_hundred(hsl[2])]
     
     def normalize_rgb(self, rgb):
+        """
+        Normalizes rgb coordinates to lie between 0 and 1.
+        """
         norm_byte = cols.Normalize(0, 256)
         norm_color = [norm_byte(c) for c in rgb]
         return norm_color
     
     def normalize_hsv(self, hsv):
+        """
+        Normalizes hsv coordinates to lie between 0 and 1.
+        """
         norm_circle = cols.Normalize(0, 360)
         norm_hundred = cols.Normalize(0, 100)
         return [norm_circle(hsv[0]), norm_hundred(hsv[1]), norm_hundred(hsv[2])]
     
     def rgb_to_hsl(self, rgb):
+        """
+        Converts rgb list to hsl.
+        """
         norm_color = self.normalize_rgb(rgb)
         hls = cs.rgb_to_hls(*norm_color)
         hsl = [int(round(360*hls[0])), round(100*hls[2]), round(100*hls[1])]
         return hsl
     
     def hsl_to_rgb(self, hsl):
+        """
+        Converts hsl list to rgb.
+        """
         # colorsys package takes colors in hls not hsl, so we swap the last two columns here.
         norm_color = self.normalize_hsl(hsl)
         norm_color[1], norm_color[2] = norm_color[2], norm_color[1]
@@ -385,6 +474,9 @@ class Color():
         return rgb
     
     def hsl_to_hsv(self, hsl):
+        """
+        Converts hsl list to hsv.
+        """
         # shamelessly taken from Will Monroes code and he based his code off of
         #   http://ariya.ofilabs.com/2008/07/converting-between-hsl-and-hsv.html
         h_in, s_in, l_in = hsl
