@@ -1,0 +1,17 @@
+name: listener-evaluation
+channels:
+    - pytorch
+    - conda-forge
+    - defaults
+dependencies:
+    - scipy
+    - numpy
+    - pandas
+    - nltk
+    - scikit-learn
+    - scikit-image
+    - matplotlib
+    - pytorch
+    - pycocotools
+    - pip
+        - sentencepiece

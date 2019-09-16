@@ -13,13 +13,38 @@ from queue import PriorityQueue # for beam search in Literal Speaker
 
 # FOR LISTENER
 class CaptionEncoder(nn.Module):
+    """
+    Implements the Monroe et al., 2017 color caption encoder.
+
+    The CaptionEncoder takes a list of possible colors and a
+    caption and converts the caption into a distribution over
+    the colors. The color with the most probability mass is 
+    most likely to be refered to by the caption.
+    
+    To do this, the network first embeds the caption into a
+    vector space, then it runs an LSTM over the vectors.
+    From the last hidden state it produces a mean vector and
+    covariance matrix giving a gaussian distribution over
+    the color space. This vector and matrix are used to
+    score each candidate color and these scores are softmaxed.
+    For more details on the scoring see Monroe et al., 2017.
+    """
     
     def __init__(self, embed_dim, hidden_dim, vocab_size, color_dim, weight_matrix=None):
         """
-        embed_dim = hidden_dim = 100
-        color_dim = 54 if using color_phi_fourier (with resolution 3)
+        Initializes CaptionEncoder.
+
+        This initialization is based on the released code from Monroe et al., 2017.
+        Further inline comments explain how this code differs.
+
+        Args:
+            embed_dim -  the output dimension for embeddings. Should be 100.
+            hidden_dim - dimension used for the hidden state of the LSTM. Should be 100.
+            vocab_size - the input dimension to the embedding layer.
+            color_dim - number of dimensions of the input color vectors, the mean
+                vector and the covariance matrix. Usually will be 54 (if using
+                color_phi_fourier with resolution 3.)
         
-        All the options can be found here: https://github.com/futurulus/colors-in-context/blob/master/models/l0.config.json
         """
         super(CaptionEncoder, self).__init__()
         self.embed = nn.Embedding(vocab_size, embed_dim)
@@ -47,6 +72,7 @@ class CaptionEncoder(nn.Module):
         self.hidden_dim = hidden_dim
         
     def forward(self, colors, caption):
+        """Turns caption into distribution over colors."""
         embeddings = self.embed(caption)
         output, (hn, cn) = self.lstm(embeddings)
         
@@ -71,7 +97,7 @@ class CaptionEncoder(nn.Module):
         return distribution 
     
     def init_hidden_and_context(self):
-        # first 2 for each direction
+        # first 2 because one vector for each direction.
         return (torch.zeros(2, 1, self.hidden_dim),
                 torch.zeros(2, 1, self.hidden_dim))
        
@@ -79,10 +105,17 @@ class CaptionEncoder(nn.Module):
 # FOR SPEAKER
 class ColorEncoder(nn.Module):
     """
-    Used by Literal Speaker to encode the context colors with an LSTM
+    Encodes the context colors with an LSTM for the Literal Speaker.
     """
     
     def __init__(self, color_dim, hidden_dim):
+        """
+        Initialize ColorEncoder.
+
+        Args:
+            color_dim - dimensions of the color vectors to be encoded.
+            hidden_dim - the dimension of the encoding LSTM hidden state.
+        """
         super(ColorEncoder, self).__init__()
         self.hidden_dim = hidden_dim
         self.color_dim = color_dim
@@ -90,7 +123,9 @@ class ColorEncoder(nn.Module):
 
     def forward(self, colors):
         """
-        Colors should be in order with target LAST
+        Encodes colors.
+
+        Colors should be any order with the target LAST.
         """
         color_states = self.init_hidden_and_context()
         color_output, (hn, cn) = self.color_lstm(colors, color_states)
@@ -103,8 +138,31 @@ class ColorEncoder(nn.Module):
                 torch.zeros(1, 1, self.hidden_dim))
 
 class CaptionGenerator(nn.Module):
-    
+    """
+    Generates/gives the likelihood of a caption from a list of colors.
+
+    The CaptionGenerator is a conditional language model
+    that gives a probability of a caption given a list of
+    colors. It can also be used as a caption generator.
+
+    First it encodes the colors using a ColorEncoder module. The target
+    color is last. Then it uses the embedding that is generated to
+    calculate probabilities of subsequent tokens using an LSTM.
+    """
     def __init__(self, color_in_dim, color_dim, vocab_size, embed_dim, speaker_hidden_dim):
+        """
+        Initialize CaptionGenerator object.
+
+        Args:
+            color_in_dim - dimension of each color vector. Usually 54.
+            color_dim - dimension of the color embedding. Usually 100 so is
+                the same as the vocab embeddings.
+            vocab_size - the input dimension for the embedding layer. Number
+                of vocab items.
+            embed_dim - size of each token embedding. Usually 100.
+            speaker_hidden_dim - dimension of the hidden state of the
+                generator's LSTM.
+        """
         super(CaptionGenerator, self).__init__()
         
         self.color_encoder = ColorEncoder(color_in_dim, color_dim)
@@ -116,6 +174,7 @@ class CaptionGenerator(nn.Module):
         self.hidden_dim = speaker_hidden_dim
         
     def forward(self, colors, captions):
+        """Gets probabilities of captions given colors."""
         # first get color context encoding
         color_features = self.color_encoder(colors)
 
@@ -139,7 +198,27 @@ class CaptionGenerator(nn.Module):
             
 # FOR IMAGINATIVE LISTENER
 class ColorGenerator(nn.Module):
+    """
+    Generates colors from a caption.
+
+    This network treats the reference game as a regression task.
+    It takes in a caption, encodes it with an LSTM and uses the
+    encoding to generate the RGB values of the predicted target color.
+
+    Only used in the 224U project.
+    """
     def __init__(self, embed_dim, hidden_dim, vocab_size, color_in_dim, color_hidden_dim, weight_matrix=None):
+        """
+        Initializes ColorGenerator object.
+
+        Args:
+            embed_dim - size of token embedding output. Usually 100.
+            hidden_dim - size of LSTM hiddem vector. Usually 100.
+            vocab_size - size of token embedding input. Number of tokens in vocabulary.
+            color_in_dim - dimensions of color vectors. Usually 54.
+            color_hidden_dim - dimension of intermediate fully connected layer.
+            weight_matrix - optional GLoVe embedding matrix to initialize embeddings with.
+        """
         super(ColorGenerator, self).__init__()
         # Embedding/LSTM for words
         self.embed = nn.Embedding(vocab_size, embed_dim)
@@ -183,7 +262,21 @@ class ColorGenerator(nn.Module):
 
 # FOR COLOR-ONLY BASELINE
 class ColorSelector(nn.Module):
+    """
+    Attempts to select the target color given only the colors and no caption.
+
+    Rather than use any fancy RNNs or LSTMs, the prediction is made using two
+    fully connected layers.
+
+    This is used as a baseline in the 224U project.
+    """
     def __init__(self, color_dim):
+        """
+        Initializes ColorSelector object.
+
+        Args:
+            color_dim - the dimension of the color vectors.
+        """
         super(ColorSelector, self).__init__()
         self.linear1 = nn.Linear(3*color_dim, color_dim)
         self.linear2 = nn.Linear(color_dim, 3)
@@ -199,6 +292,13 @@ class ColorSelector(nn.Module):
 
 # FOR Single Color with Linear-layer as Encoder
 class SingleColorCaptionGenerator(nn.Module):
+    """
+    Generates a caption of a single color.
+
+    As opposed to the color reference game where the task
+    is to caption a color out of a list of colors, this
+    model captions a single color.
+    """
 
     def __init__(self, color_in_dim, color_dim, vocab_size, embed_dim, speaker_hidden_dim):
         super(SingleColorCaptionGenerator, self).__init__()
@@ -233,7 +333,9 @@ class SingleColorCaptionGenerator(nn.Module):
 # Wrappers for torch models to handle training/evaluating # 
 ###########################################################
 class PytorchModel():
+    """
 
+    """
     def __init__(self,  model, optimizer=torch.optim.Adadelta,
                  criterion=nn.NLLLoss, lr=0.2, num_epochs=30):
         """
@@ -520,8 +622,8 @@ class LiteralSpeaker(PytorchModel):
                 caption, colors_before_roll = feature
                 caption = torch.tensor([caption], dtype=torch.long)
                 predictions_all_targets =  []
-                for r in range(len(colors_before_roll)): # Roll through the different possible targets being last
-                    colors = np.roll(colors_before_roll, shift=r, axis=0)
+                for r in range(len(colors_before_roll)): # Roll through the different possible targets being last in the same order the colors are presented
+                    colors = np.roll(colors_before_roll, shift=-r, axis=0) # hence the -r
                     colors = torch.tensor([colors], dtype=torch.float)
                     colors = np.flip(colors.numpy(), axis=1).copy()
                     colors = torch.from_numpy(colors)
@@ -575,8 +677,9 @@ class LiteralSpeakerScorer(LiteralSpeaker):
                 
                 each_color_outputs = []
                 for r in range(len(colors_before_roll)):
-                    # we want to get probability that each color is target
-                    colors = np.roll(colors_before_roll, shift=r, axis=0)
+                    # we want to get probability that each color is target.
+                    # r is negative so indices of color output line up with indices of colors passed
+                    colors = np.roll(colors_before_roll, shift=-r, axis=0)
                     # flip colors so target is last - consistent with target being last
                     colors = np.flip(colors, axis=0).copy()
                     color_tensor = torch.tensor([colors])
